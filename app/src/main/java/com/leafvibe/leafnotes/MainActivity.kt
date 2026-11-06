@@ -42,6 +42,8 @@ private data class Note(
 )
 private data class NoteCategory(val name: String, val emoji: String, val color: Long)
 
+private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
+
 private val starterCategories = listOf(
     NoteCategory("Nouveaux", "✨", 0xFF8E7CC3),
     NoteCategory("Favoris", "⭐", 0xFFE0A52B),
@@ -93,7 +95,7 @@ private fun LeafNotesApp() {
     val visible = notes.filter { n ->
         val categoryMatch = when (selectedCategory) {
             "Tous" -> true
-            "Favoris" -> n.favorite
+            FAVORITES_FILTER -> n.favorite
             else -> n.category == selectedCategory
         }
         categoryMatch && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true))
@@ -131,7 +133,7 @@ private fun LeafNotesApp() {
                 Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; page = 0 }, label = { Text("Tout") }) }
-                    item { FilterChip(selectedCategory == "Favoris", { selectedCategory = "Favoris"; page = 0 }, label = { Text("⭐ Favoris") }) }
+                    item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; page = 0 }, label = { Text("⭐ Favoris") }) }
                     items(categories) { category ->
                         FilterChip(selectedCategory == category.name, { selectedCategory = category.name; page = 0 },
                             label = { Text("${category.emoji} ${category.name}") })
@@ -140,7 +142,7 @@ private fun LeafNotesApp() {
                 }
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (selectedCategory == "Tous") "Ma bibliothèque" else selectedCategory,
+                    Text(when (selectedCategory) { "Tous" -> "Ma bibliothèque"; FAVORITES_FILTER -> "Favoris"; else -> selectedCategory },
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f))
                     Text("${visible.size} note(s)", style = MaterialTheme.typography.labelMedium,
@@ -190,8 +192,11 @@ private fun LeafNotesApp() {
         showEditor = false
     }
     if (showCategoryEditor) CategoryEditorDialog({ showCategoryEditor = false }) { name, emoji ->
-        if (name.isNotBlank() && categories.none { it.name.equals(name.trim(), true) }) {
-            saveCategories(categories + NoteCategory(name.trim(), emoji.ifBlank { "📁" }, 0xFF6C9B80))
+        val normalizedName = name.trim()
+        if (normalizedName.isNotEmpty() &&
+            !normalizedName.equals("Tous", true) &&
+            categories.none { it.name.equals(normalizedName, true) }) {
+            saveCategories(categories + NoteCategory(normalizedName, emoji.ifBlank { "📁" }, 0xFF6C9B80))
         }
         showCategoryEditor = false
     }
