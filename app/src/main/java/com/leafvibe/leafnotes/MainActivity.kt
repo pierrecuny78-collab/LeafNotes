@@ -2,10 +2,26 @@ package com.leafvibe.leafnotes
 
 import android.content.Context
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Data
+import java.util.concurrent.TimeUnit
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -24,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.json.JSONArray
@@ -32,15 +49,22 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
 
-private data class Note(
+data class Note(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val body: String,
     val category: String,
     val favorite: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val reminderAt: Long = 0L
 )
 private data class NoteCategory(val name: String, val emoji: String, val color: Long)
+
+private val Oasis = Color(0xFF206B4D)
+private val Walnut = Color(0xFF6B4935)
+private val NaturalGold = Color(0xFFC5A46D)
+private val Cream = Color(0xFFDCCBB1)
+private val SandBorder = Color(0xFFB69A7B)
 
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 
@@ -73,23 +97,61 @@ private fun LeafNotesApp() {
     var editing by remember { mutableStateOf<Note?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var showCategoryEditor by remember { mutableStateOf(false) }
+    var showCategoryManager by remember { mutableStateOf(false) }
+    var showGraph by remember { mutableStateOf(false) }
+    var showSwipe by remember { mutableStateOf(false) }
+    var showLearning by remember { mutableStateOf(false) }
+    var showQuiz by remember { mutableStateOf(false) }
+    var showBackup by remember { mutableStateOf(false) }
+    var reminderTarget by remember { mutableStateOf<Note?>(null) }
+    var permissionPending by remember { mutableStateOf<Note?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val target = permissionPending
+        permissionPending = null
+        if (granted && target != null) reminderTarget = target
+    }
 
     fun saveNotes(value: List<Note>) {
         notes = value
         prefs.edit().putString("notes", JSONArray().apply {
             value.forEach { n -> put(JSONObject().apply {
                 put("id", n.id); put("title", n.title); put("body", n.body)
-                put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt)
+                put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt); put("reminderAt", n.reminderAt)
             }) }
         }.toString()).apply()
     }
+    // Never delete categories: preserve existing entries and append new ones.
     fun saveCategories(value: List<NoteCategory>) {
-        categories = value
+        val merged = (categories + value).distinctBy { it.name.trim().lowercase() }
+        categories = merged
         prefs.edit().putString("categories", JSONArray().apply {
-            value.forEach { c -> put(JSONObject().apply {
+            merged.forEach { c -> put(JSONObject().apply {
                 put("name", c.name); put("emoji", c.emoji); put("color", c.color)
             }) }
         }.toString()).apply()
+    }
+
+    val backupExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(buildBackupJson(notes, categories).toByteArray(Charsets.UTF_8)) }
+        }
+    }
+    val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Fichier vide")
+            val root = JSONObject(raw)
+            val importedNotes = parseBackupNotes(root.optJSONArray("notes") ?: JSONArray())
+            val importedCategories = parseBackupCategories(root.optJSONArray("categories") ?: JSONArray())
+            val safeImportedCategories = if (importedCategories.none { it.name == "Nouveaux" })
+                listOf(NoteCategory("Nouveaux", "✨", 0xFF8E7CC3)) + importedCategories else importedCategories
+            saveCategories(safeImportedCategories)
+            val knownNames = (categories + safeImportedCategories).map { it.name.lowercase() }.toSet()
+            val missingCategories = importedNotes.map { it.category }.distinct()
+                .filter { it.isNotBlank() && it.lowercase() !in knownNames }
+                .map { NoteCategory(it, "📁", 0xFF6C9B80) }
+            saveCategories(missingCategories)
+            saveNotes(importedNotes)
+        }
     }
 
     val visible = notes.filter { n ->
@@ -104,7 +166,13 @@ private fun LeafNotesApp() {
     val safePage = page.coerceIn(0, pageCount - 1)
     val pageNotes = visible.drop(safePage * 5).take(5)
 
-    MaterialTheme(colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()) {
+    val appColors = if (darkTheme) {
+        darkColorScheme(primary = Oasis, secondary = Walnut, tertiary = NaturalGold)
+    } else {
+        lightColorScheme(primary = Oasis, secondary = Walnut, tertiary = NaturalGold,
+            background = Cream, surface = Cream, outline = SandBorder)
+    }
+    MaterialTheme(colorScheme = appColors) {
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(onClick = { editing = null; showEditor = true }) {
@@ -115,6 +183,9 @@ private fun LeafNotesApp() {
             Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp).padding(top = 14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("🍃 LeafVibe", color = Oasis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
                         Text("LeafNotes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                         Text("Ton espace, tes idées.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -139,8 +210,17 @@ private fun LeafNotesApp() {
                             label = { Text("${category.emoji} ${category.name}") })
                     }
                     item { AssistChip(onClick = { showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
+                    item { AssistChip(onClick = { showCategoryManager = true }, label = { Text("Gérer les dossiers") }) }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    item { AssistChip(onClick = { showGraph = true }, label = { Text("LeafGraph") }) }
+                    item { AssistChip(onClick = { showSwipe = true }, label = { Text("LeafSwipe") }) }
+                    item { AssistChip(onClick = { showLearning = true }, label = { Text("LeafLearning") }) }
+                    item { AssistChip(onClick = { showQuiz = true }, label = { Text("LeafQuiz") }) }
+                    item { AssistChip(onClick = { showBackup = true }, label = { Text("LeafBackup") }) }
+                }
+                Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(when (selectedCategory) { "Tous" -> "Ma bibliothèque"; FAVORITES_FILTER -> "Favoris"; else -> selectedCategory },
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
@@ -158,15 +238,31 @@ private fun LeafNotesApp() {
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
-                        items(pageNotes, key = { it.id }) { note ->
+                    val screenWidth = LocalConfiguration.current.screenWidthDp
+                    val columns = when {
+                        screenWidth >= 1200 -> 5
+                        screenWidth >= 840 -> 3
+                        screenWidth >= 600 -> 2
+                        else -> 1
+                    }
+                    LazyVerticalGrid(columns = GridCells.Fixed(columns),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 12.dp)) {
+                        gridItems(pageNotes, key = { it.id }) { note ->
                             NoteCard(note,
                                 onEdit = { editing = note; showEditor = true },
                                 onFavorite = { saveNotes(notes.map {
                                     if (it.id == note.id) it.copy(favorite = !it.favorite, updatedAt = System.currentTimeMillis()) else it
                                 }) },
-                                onDelete = { saveNotes(notes.filterNot { it.id == note.id }) })
+                                onDelete = { saveNotes(notes.filterNot { it.id == note.id }) },
+                                onReminder = { target ->
+                                    if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                        permissionPending = target
+                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else reminderTarget = target
+                                })
                         }
                     }
                 }
@@ -184,6 +280,13 @@ private fun LeafNotesApp() {
         }
     }
 
+    if (reminderTarget != null) ReminderDialog(reminderTarget!!, { reminderTarget = null }) { delayMinutes ->
+        val target = reminderTarget!!
+        val whenAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes)
+        scheduleNoteReminder(context, target, delayMinutes)
+        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = whenAt) else it })
+        reminderTarget = null
+    }
     if (showEditor) NoteEditorDialog(editing, categories, { showEditor = false }) { title, body, category ->
         val old = editing
         val changed = if (old == null) notes + Note(title = title, body = body, category = category)
@@ -191,6 +294,16 @@ private fun LeafNotesApp() {
         saveNotes(changed)
         showEditor = false
     }
+    if (showCategoryManager) CategoryManagerDialog(categories) { showCategoryManager = false }
+    if (showGraph) LeafGraphDialog(notes, onOpen = { note -> editing = note; showEditor = true; showGraph = false }) { showGraph = false }
+    if (showSwipe) LeafSwipeDialog(notes, onOpen = { note -> editing = note; showEditor = true; showSwipe = false }) { showSwipe = false }
+    if (showLearning) LeafLearningDialog(notes) { showLearning = false }
+    if (showQuiz) LeafQuizDialog(notes) { showQuiz = false }
+    if (showBackup) LeafBackupDialog(
+        onExport = { backupExport.launch("LeafNotes-sauvegarde.json") },
+        onImport = { backupImport.launch(arrayOf("application/json", "text/*")) },
+        onDismiss = { showBackup = false }
+    )
     if (showCategoryEditor) CategoryEditorDialog({ showCategoryEditor = false }) { name, emoji ->
         val normalizedName = name.trim()
         if (normalizedName.isNotEmpty() &&
@@ -203,8 +316,10 @@ private fun LeafNotesApp() {
 }
 
 @Composable
-private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit) {
+private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit, onReminder: (Note) -> Unit) {
+    var confirmDelete by remember(note.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit),
+        border = androidx.compose.foundation.BorderStroke(1.dp, SandBorder),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -215,9 +330,10 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                         contentDescription = "Favori",
                         tint = if (note.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
+                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
             }
             if (note.body.isNotBlank()) Text(note.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { onReminder(note) }) { Text(if (note.reminderAt > System.currentTimeMillis()) "⏰ Rappel programmé" else "＋ Ajouter un rappel") }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(note.category, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -226,6 +342,15 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Supprimer cette note ?") },
+            text = { Text("Cette action supprimera définitivement cette note de la bibliothèque locale.") },
+            confirmButton = { TextButton(onClick = { onDelete(); confirmDelete = false }) { Text("Supprimer") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Annuler") } }
+        )
     }
 }
 
@@ -273,7 +398,7 @@ private fun loadNotes(prefs: android.content.SharedPreferences): List<Note> = ru
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
         Note(o.optString("id"), o.optString("title"), o.optString("body"),
-            o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt"))
+            o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt"), o.optLong("reminderAt", 0L))
     }
 }.getOrDefault(emptyList())
 
@@ -285,3 +410,225 @@ private fun loadCategories(prefs: android.content.SharedPreferences): List<NoteC
         NoteCategory(o.getString("name"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
     }
 }.getOrDefault(starterCategories)
+
+
+@Composable
+private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Catégories et dossiers protégés") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Aucune catégorie ne sera supprimée. Les catégories déjà présentes et celles que tu créeras resteront dans ta bibliothèque, même après une restauration de sauvegarde.",
+                    style = MaterialTheme.typography.bodySmall)
+                categories.forEach { category ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(category.emoji + " " + category.name, Modifier.weight(1f))
+                        Text("Conservée", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    HorizontalDivider()
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
+    )
+}
+
+@Composable
+private fun LeafGraphDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: () -> Unit) {
+    LeafGraphCanvasDialog(notes = notes, onOpen = onOpen, onDismiss = onDismiss)
+}
+
+@Composable
+private fun LeafSwipeDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: () -> Unit) {
+    var index by remember(notes) { mutableIntStateOf(0) }
+    var revealed by remember { mutableStateOf(false) }
+    val safeIndex = index.coerceIn(0, (notes.size - 1).coerceAtLeast(0))
+    val note = notes.getOrNull(safeIndex)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("LeafSwipe · Révision rapide") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(if (notes.isEmpty()) "Aucune note à réviser" else (safeIndex + 1).toString() + " / " + notes.size,
+                    style = MaterialTheme.typography.labelMedium)
+                if (note != null) {
+                    Card(
+                        Modifier.fillMaxWidth().heightIn(min = 190.dp)
+                            .pointerInput(safeIndex, notes.size) {
+                                var dragDistance = 0f
+                                detectHorizontalDragGestures(
+                                    onDragEnd = {
+                                        if (dragDistance <= -70f) { index = (index + 1).coerceAtMost(notes.lastIndex); revealed = false }
+                                        else if (dragDistance >= 70f) { index = (index - 1).coerceAtLeast(0); revealed = false }
+                                        dragDistance = 0f
+                                    },
+                                    onHorizontalDrag = { _, amount -> dragDistance += amount }
+                                )
+                            },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(note.category, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                            Text(note.title.ifBlank { "Sans titre" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            if (revealed) Text(note.body.ifBlank { "Cette note ne contient pas encore de réponse." })
+                            else Text("Essaie de te rappeler le contenu, puis affiche la réponse.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Button(onClick = { revealed = !revealed }) { Text(if (revealed) "Masquer la réponse" else "Afficher la réponse") }
+                            TextButton(onClick = { onOpen(note) }) { Text("Modifier cette note") }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = { index = (index - 1).coerceAtLeast(0); revealed = false }, enabled = safeIndex > 0) { Text("Précédent") }
+                        Button(onClick = { index = (index + 1).coerceAtMost(notes.lastIndex); revealed = false }, enabled = safeIndex < notes.lastIndex) { Text("Suivant") }
+                    }
+                    Text("Tu peux aussi faire glisser la carte horizontalement.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
+    )
+}
+
+@Composable
+private fun LeafLearningDialog(notes: List<Note>, onDismiss: () -> Unit) {
+    var index by remember(notes) { mutableIntStateOf(0) }
+    var answerVisible by remember { mutableStateOf(false) }
+    var mastered by remember { mutableIntStateOf(0) }
+    var toReview by remember { mutableIntStateOf(0) }
+    val note = notes.getOrNull(index.coerceIn(0, (notes.size - 1).coerceAtLeast(0)))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("LeafLearning · Apprendre activement") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Rappelle-toi d'abord, reformule avec tes mots, puis vérifie. Ce système utilise tes notes comme cartes de révision.",
+                    style = MaterialTheme.typography.bodySmall)
+                if (note == null) Text("Ajoute des notes pour commencer.")
+                else {
+                    Text((index + 1).toString() + " / " + notes.size + " · " + note.category, color = MaterialTheme.colorScheme.primary)
+                    Text(note.title.ifBlank { "Sans titre" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (answerVisible) Text(note.body.ifBlank { "Ajoute une réponse à cette note pour mieux l'étudier." })
+                    else Text("Sans regarder la note, explique le sujet à voix haute ou sur une feuille.")
+                    Button(onClick = { answerVisible = !answerVisible }) { Text(if (answerVisible) "Cacher" else "Vérifier ma réponse") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { toReview++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("À revoir") }
+                        Button(onClick = { mastered++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Je maîtrise") }
+                    }
+                    Text("Maîtrisées : " + mastered + " · À revoir : " + toReview, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
+    )
+}
+
+@Composable
+private fun LeafQuizDialog(notes: List<Note>, onDismiss: () -> Unit) {
+    var index by remember(notes) { mutableIntStateOf(0) }
+    var answerVisible by remember { mutableStateOf(false) }
+    var correct by remember { mutableIntStateOf(0) }
+    var wrong by remember { mutableIntStateOf(0) }
+    val note = notes.getOrNull(index.coerceIn(0, (notes.size - 1).coerceAtLeast(0)))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("LeafQuiz · Quiz à partir de tes notes") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (note == null) Text("Ajoute des notes pour générer tes premières questions.")
+                else {
+                    Text("Question " + (index + 1) + " / " + notes.size, color = MaterialTheme.colorScheme.primary)
+                    Text(note.title.ifBlank { "Quel est le sujet de cette note ?" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (answerVisible) Text(note.body.ifBlank { "Aucune réponse enregistrée." })
+                    else Text("Essaie de répondre sans consulter ton cours.")
+                    Button(onClick = { answerVisible = !answerVisible }) { Text(if (answerVisible) "Masquer" else "Voir la réponse") }
+                    if (answerVisible) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { wrong++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Incorrect") }
+                        Button(onClick = { correct++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Correct") }
+                    }
+                    Text("Réponses correctes : " + correct + " · À retravailler : " + wrong, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
+    )
+}
+
+@Composable
+private fun LeafBackupDialog(onExport: () -> Unit, onImport: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("LeafBackup · Sauvegarde locale") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Exporte tes notes et catégories dans un fichier JSON, puis conserve-le sur ta carte SD ou un autre support.")
+                OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
+                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde") }
+                Text("L'import remplace la bibliothèque actuelle. Fais une sauvegarde avant de restaurer.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
+    )
+}
+
+private fun buildBackupJson(notes: List<Note>, categories: List<NoteCategory>): String = JSONObject().apply {
+    put("format", "leafnotes-backup")
+    put("version", 1)
+    put("createdAt", System.currentTimeMillis())
+    put("notes", JSONArray().apply {
+        notes.forEach { n -> put(JSONObject().apply {
+            put("id", n.id); put("title", n.title); put("body", n.body)
+            put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt); put("reminderAt", n.reminderAt)
+        }) }
+    })
+    put("categories", JSONArray().apply {
+        categories.forEach { c -> put(JSONObject().apply {
+            put("name", c.name); put("emoji", c.emoji); put("color", c.color)
+        }) }
+    })
+}.toString(2)
+
+private fun parseBackupNotes(array: JSONArray): List<Note> = (0 until array.length()).map { i ->
+    val o = array.getJSONObject(i)
+    Note(o.optString("id", UUID.randomUUID().toString()), o.optString("title"), o.optString("body"),
+        o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt", System.currentTimeMillis()), o.optLong("reminderAt", 0L))
+}
+
+private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 until array.length()).map { i ->
+    val o = array.getJSONObject(i)
+    NoteCategory(o.optString("name", "Dossier"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
+}.distinctBy { it.name.lowercase() }.filter { it.name.isNotBlank() }
+
+
+@Composable
+private fun ReminderDialog(note: Note, onDismiss: () -> Unit, onChoose: (Long) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rappel · " + note.title.ifBlank { "Sans titre" }) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choisis quand Android doit te rappeler cette note.")
+                OutlinedButton(onClick = { onChoose(60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans 1 heure") }
+                OutlinedButton(onClick = { onChoose(24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Demain") }
+                OutlinedButton(onClick = { onChoose(7L * 24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans une semaine") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Long) {
+    val input = Data.Builder()
+        .putString("note_title", note.title.ifBlank { "Rappel LeafNotes" })
+        .putString("note_body", note.body.take(240))
+        .putString("note_id", note.id)
+        .build()
+    val request = OneTimeWorkRequestBuilder<LeafNoteReminderWorker>()
+        .setInputData(input)
+        .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+        .addTag("leafnotes-reminder-" + note.id)
+        .build()
+    WorkManager.getInstance(context).enqueue(request)
+}

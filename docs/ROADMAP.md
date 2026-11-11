@@ -11,6 +11,11 @@
 - [x] Persistance locale automatique
 
 ## V0.2 — Organisation
+- [x] LeafGraph : carte visuelle des notes
+- [x] Déplacement de la carte et zoom tactile
+- [x] Ouverture d'une note depuis un nœud
+- [x] Liens explicites entre notes avec la syntaxe [[Titre exact]]
+- [ ] Édition visuelle des liens et navigation bidirectionnelle
 - [ ] Épingles, archives et corbeille avec restauration
 - [ ] Édition des catégories (emoji, palette, ordre)
 - [ ] Tags et notes liées
