@@ -54,8 +54,14 @@ private val starterCategories = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+    override fun onStop() {
+        LeafAutoBackupScheduler.requestSoon(this)
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LeafAutoBackupScheduler.install(this)
         setContent { LeafNotesApp() }
     }
 }
