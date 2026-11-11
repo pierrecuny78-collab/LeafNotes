@@ -2,6 +2,13 @@ package com.leafvibe.leafnotes
 
 import android.content.Context
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Data
+import java.util.concurrent.TimeUnit
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,7 +55,8 @@ private data class Note(
     val body: String,
     val category: String,
     val favorite: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val reminderAt: Long = 0L
 )
 private data class NoteCategory(val name: String, val emoji: String, val color: Long)
 
@@ -95,13 +103,20 @@ private fun LeafNotesApp() {
     var showLearning by remember { mutableStateOf(false) }
     var showQuiz by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
+    var reminderTarget by remember { mutableStateOf<Note?>(null) }
+    var permissionPending by remember { mutableStateOf<Note?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val target = permissionPending
+        permissionPending = null
+        if (granted && target != null) reminderTarget = target
+    }
 
     fun saveNotes(value: List<Note>) {
         notes = value
         prefs.edit().putString("notes", JSONArray().apply {
             value.forEach { n -> put(JSONObject().apply {
                 put("id", n.id); put("title", n.title); put("body", n.body)
-                put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt)
+                put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt); put("reminderAt", n.reminderAt)
             }) }
         }.toString()).apply()
     }
@@ -233,7 +248,13 @@ private fun LeafNotesApp() {
                                 onFavorite = { saveNotes(notes.map {
                                     if (it.id == note.id) it.copy(favorite = !it.favorite, updatedAt = System.currentTimeMillis()) else it
                                 }) },
-                                onDelete = { saveNotes(notes.filterNot { it.id == note.id }) })
+                                onDelete = { saveNotes(notes.filterNot { it.id == note.id }) },
+                                onReminder = { target ->
+                                    if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                        permissionPending = target
+                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else reminderTarget = target
+                                })
                         }
                     }
                 }
@@ -251,6 +272,13 @@ private fun LeafNotesApp() {
         }
     }
 
+    if (reminderTarget != null) ReminderDialog(reminderTarget!!, { reminderTarget = null }) { delayMinutes ->
+        val target = reminderTarget!!
+        val whenAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes)
+        scheduleNoteReminder(context, target, delayMinutes)
+        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = whenAt) else it })
+        reminderTarget = null
+    }
     if (showEditor) NoteEditorDialog(editing, categories, { showEditor = false }) { title, body, category ->
         val old = editing
         val changed = if (old == null) notes + Note(title = title, body = body, category = category)
@@ -286,7 +314,7 @@ private fun LeafNotesApp() {
 }
 
 @Composable
-private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit) {
+private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit, onReminder: (Note) -> Unit) {
     var confirmDelete by remember(note.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit),
         border = androidx.compose.foundation.BorderStroke(1.dp, SandBorder),
@@ -303,6 +331,7 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                 IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
             }
             if (note.body.isNotBlank()) Text(note.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { onReminder(note) }) { Text(if (note.reminderAt > System.currentTimeMillis()) "⏰ Rappel programmé" else "＋ Ajouter un rappel") }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(note.category, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -367,7 +396,7 @@ private fun loadNotes(prefs: android.content.SharedPreferences): List<Note> = ru
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
         Note(o.optString("id"), o.optString("title"), o.optString("body"),
-            o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt"))
+            o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt"), o.optLong("reminderAt", 0L))
     }
 }.getOrDefault(emptyList())
 
@@ -582,7 +611,7 @@ private fun buildBackupJson(notes: List<Note>, categories: List<NoteCategory>): 
     put("notes", JSONArray().apply {
         notes.forEach { n -> put(JSONObject().apply {
             put("id", n.id); put("title", n.title); put("body", n.body)
-            put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt)
+            put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt); put("reminderAt", n.reminderAt)
         }) }
     })
     put("categories", JSONArray().apply {
@@ -595,10 +624,42 @@ private fun buildBackupJson(notes: List<Note>, categories: List<NoteCategory>): 
 private fun parseBackupNotes(array: JSONArray): List<Note> = (0 until array.length()).map { i ->
     val o = array.getJSONObject(i)
     Note(o.optString("id", UUID.randomUUID().toString()), o.optString("title"), o.optString("body"),
-        o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt", System.currentTimeMillis()))
+        o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt", System.currentTimeMillis()), o.optLong("reminderAt", 0L))
 }
 
 private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 until array.length()).map { i ->
     val o = array.getJSONObject(i)
     NoteCategory(o.optString("name", "Dossier"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
 }.distinctBy { it.name.lowercase() }.filter { it.name.isNotBlank() }
+
+
+@Composable
+private fun ReminderDialog(note: Note, onDismiss: () -> Unit, onChoose: (Long) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rappel · " + note.title.ifBlank { "Sans titre" }) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choisis quand Android doit te rappeler cette note.")
+                OutlinedButton(onClick = { onChoose(60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans 1 heure") }
+                OutlinedButton(onClick = { onChoose(24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Demain") }
+                OutlinedButton(onClick = { onChoose(7L * 24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans une semaine") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Long) {
+    val input = Data.Builder()
+        .putString("note_title", note.title.ifBlank { "Rappel LeafNotes" })
+        .putString("note_body", note.body.take(240))
+        .putString("note_id", note.id)
+        .build()
+    val request = OneTimeWorkRequestBuilder<LeafNoteReminderWorker>()
+        .setInputData(input)
+        .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+        .addTag("leafnotes-reminder-" + note.id)
+        .build()
+    WorkManager.getInstance(context).enqueue(request)
+}
