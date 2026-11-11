@@ -12,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -32,8 +31,8 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
 
-private data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis())
-private data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis())
+internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
     NoteCategory("Nouveaux", "✨", 0xFF8E7CC3), NoteCategory("Idées", "💡", 0xFF4D9B83),
@@ -59,6 +58,7 @@ private fun LeafNotesApp() {
     var editing by remember { mutableStateOf<Note?>(null) }
     var editor by remember { mutableStateOf(false) }
     var categoryLibrary by remember { mutableStateOf(false) }
+    var graphOpen by remember { mutableStateOf(false) }
     var parent by remember { mutableStateOf<String?>(null) }
     var categoryPage by remember { mutableIntStateOf(0) }
     var categoryEditor by remember { mutableStateOf(false) }
@@ -88,7 +88,14 @@ private fun LeafNotesApp() {
     val pageNotes = visible.drop(safePage * 5).take(5)
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-        if (categoryLibrary) {
+        if (graphOpen) {
+            LeafGraphScreen(
+                notes = notes,
+                categories = categories,
+                onClose = { graphOpen = false },
+                onOpenNote = { note -> editing = note; editor = true; graphOpen = false }
+            )
+        } else if (categoryLibrary) {
             val children = categories.filter { it.parent == parent }.sortedBy { it.name.lowercase() }
             val countPages = maxOf(1, (children.size + 4) / 5)
             val safe = categoryPage.coerceIn(0, countPages - 1)
@@ -143,6 +150,7 @@ private fun LeafNotesApp() {
                         TextButton(onClick = { parent = null; categoryPage = 0; categoryLibrary = true }) {
                             Icon(Icons.Default.Folder, null); Text("Catégories")
                         }
+                        TextButton(onClick = { graphOpen = true }) { Text("🕸️ Graph") }
                         IconButton(onClick = { dark = !dark; prefs.edit().putBoolean("dark", dark).apply() }) { Text(if (dark) "☀️" else "🌙") }
                     }
                     OutlinedTextField(query, { query = it; page = 0 }, Modifier.fillMaxWidth(), singleLine = true,
