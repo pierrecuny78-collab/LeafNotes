@@ -49,7 +49,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
 
-private data class Note(
+data class Note(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val body: String,
@@ -438,31 +438,7 @@ private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () 
 
 @Composable
 private fun LeafGraphDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("LeafGraph · Carte de tes connaissances") },
-        text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Les notes sont regroupées par catégorie. Ouvre une note pour la modifier et développer ton réseau de connaissances.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (notes.isEmpty()) Text("Crée d'abord quelques notes pour construire ton graphe.")
-                notes.groupBy { it.category }.forEach { (category, grouped) ->
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                            Text("📁 " + category + " · " + grouped.size, fontWeight = FontWeight.Bold)
-                            grouped.forEach { note ->
-                                TextButton(onClick = { onOpen(note) }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("●  " + note.title.ifBlank { "Sans titre" }, Modifier.fillMaxWidth())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
-    )
+    LeafGraphCanvasDialog(notes = notes, onOpen = onOpen, onDismiss = onDismiss)
 }
 
 @Composable
