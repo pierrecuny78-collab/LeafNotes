@@ -112,7 +112,7 @@ private fun LeafNotesApp() {
                 }
             }
         ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp).padding(top = 14.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 14.dp).padding(top = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("LeafNotes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -123,14 +123,14 @@ private fun LeafNotesApp() {
                         prefs.edit().putBoolean("dark", darkTheme).apply()
                     }) { Icon(Icons.Default.DarkMode, contentDescription = "Changer le thème") }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = query, onValueChange = { query = it; page = 0 },
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     placeholder = { Text("Rechercher dans tes notes…") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; page = 0 }, label = { Text("Tout") }) }
                     item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; page = 0 }, label = { Text("⭐ Favoris") }) }
@@ -140,7 +140,7 @@ private fun LeafNotesApp() {
                     }
                     item { AssistChip(onClick = { showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(when (selectedCategory) { "Tous" -> "Ma bibliothèque"; FAVORITES_FILTER -> "Favoris"; else -> selectedCategory },
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
@@ -159,7 +159,7 @@ private fun LeafNotesApp() {
                     }
                 } else {
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+                        verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
                         items(pageNotes, key = { it.id }) { note ->
                             NoteCard(note,
                                 onEdit = { editing = note; showEditor = true },
@@ -191,11 +191,12 @@ private fun LeafNotesApp() {
         saveNotes(changed)
         showEditor = false
     }
-    if (showCategoryEditor) CategoryEditorDialog({ showCategoryEditor = false }) { name, emoji ->
+    if (showCategoryEditor) CategoryEditorDialog(categories.map { it.emoji }.toSet(), { showCategoryEditor = false }) { name, emoji ->
         val normalizedName = name.trim()
         if (normalizedName.isNotEmpty() &&
             !normalizedName.equals("Tous", true) &&
-            categories.none { it.name.equals(normalizedName, true) }) {
+            categories.none { it.name.equals(normalizedName, true) } &&
+            categories.none { it.emoji == emoji }) {
             saveCategories(categories + NoteCategory(normalizedName, emoji.ifBlank { "📁" }, 0xFF6C9B80))
         }
         showCategoryEditor = false
@@ -204,9 +205,10 @@ private fun LeafNotesApp() {
 
 @Composable
 private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit) {
+    var showDeleteConfirm by remember(note.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(note.title.ifBlank { "Sans titre" }, Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -215,7 +217,7 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                         contentDescription = "Favori",
                         tint = if (note.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
+                IconButton(onClick = { showDeleteConfirm = true }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
             }
             if (note.body.isNotBlank()) Text(note.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
@@ -226,6 +228,19 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Supprimer cette note ?") },
+            text = { Text("La note « ${note.title.ifBlank { "Sans titre" }} » sera supprimée de ta bibliothèque.") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteConfirm = false; onDelete() }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Annuler") }
+            }
+        )
     }
 }
 
@@ -254,17 +269,25 @@ private fun NoteEditorDialog(initial: Note?, categories: List<NoteCategory>, onD
 }
 
 @Composable
-private fun CategoryEditorDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+private fun CategoryEditorDialog(usedEmojis: Set<String>, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+    val emojiChoices = listOf("📁", "🧠", "🔬", "🧪", "🌍", "🎨", "🎵", "💡", "📖", "⚙️", "🚀", "🧩", "📝", "🌱", "📊", "🗂️", "🏷️", "🧭")
+    val availableEmojis = emojiChoices.filterNot { it in usedEmojis }
     var name by remember { mutableStateOf("") }
-    var emoji by remember { mutableStateOf("📁") }
+    var emoji by remember(availableEmojis) { mutableStateOf(availableEmojis.firstOrNull().orEmpty()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Créer une catégorie") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nom") }, singleLine = true)
-                OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true)
+                Text("Choisis une icône unique", style = MaterialTheme.typography.labelLarge)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(availableEmojis) { choice ->
+                        FilterChip(selected = emoji == choice, onClick = { emoji = choice }, label = { Text(choice) })
+                    }
+                }
+                if (availableEmojis.isEmpty()) Text("Toutes les icônes proposées sont utilisées.", color = MaterialTheme.colorScheme.error)
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name, emoji) }, enabled = name.isNotBlank()) { Text("Créer") } },
+        confirmButton = { TextButton(onClick = { onSave(name, emoji) }, enabled = name.isNotBlank() && emoji.isNotBlank()) { Text("Créer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } })
 }
 
