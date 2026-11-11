@@ -482,10 +482,15 @@ private fun LeafSwipeDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss
                     Card(
                         Modifier.fillMaxWidth().heightIn(min = 190.dp)
                             .pointerInput(safeIndex, notes.size) {
-                                detectHorizontalDragGestures { _, dragAmount ->
-                                    if (dragAmount < -18) { index = (index + 1).coerceAtMost(notes.lastIndex); revealed = false }
-                                    if (dragAmount > 18) { index = (index - 1).coerceAtLeast(0); revealed = false }
-                                }
+                                var dragDistance = 0f
+                                detectHorizontalDragGestures(
+                                    onDragEnd = {
+                                        if (dragDistance <= -70f) { index = (index + 1).coerceAtMost(notes.lastIndex); revealed = false }
+                                        else if (dragDistance >= 70f) { index = (index - 1).coerceAtLeast(0); revealed = false }
+                                        dragDistance = 0f
+                                    },
+                                    onHorizontalDrag = { _, amount -> dragDistance += amount }
+                                )
                             },
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
