@@ -37,3 +37,17 @@
 - [ ] Statistiques locales
 - [ ] Tests de partage Android
 - [ ] Étude expérimentale distincte pour Galaxy Fit3
+
+
+## V0.6 — LeafGraph & apprentissage intégré
+- [ ] Espace LeafGraph dédié avec navigation retour fiable, zoom/déplacement et vues graphe/liste
+- [ ] Nœuds réutilisant les notes et catégories existantes (sans dupliquer les contenus)
+- [ ] Liens manuels entre notes, catégories, dossiers et sujets
+- [ ] Zone blanche « Ma compréhension » sous chaque note source, avec sauvegarde indépendante
+- [ ] Supports personnels : images, schémas, tableaux et pièces jointes
+- [ ] Génération manuelle de cartes et questions depuis une note ou sa reformulation
+- [ ] Modes quiz : QCM, vrai/faux, réponse libre, texte à trous et restitution sans indice
+- [ ] Répétition espacée avec niveaux de difficulté et historique de révision
+- [ ] Planning, rappels Android locaux et statistiques de maîtrise
+- [ ] Vue LeafSwipe pour révisions courtes et apprentissage ludique
+- [ ] Tests de non-régression, migration des données et validation sur Galaxy A15 5G
