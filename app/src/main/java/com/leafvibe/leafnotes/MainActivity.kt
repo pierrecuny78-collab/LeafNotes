@@ -205,6 +205,7 @@ private fun LeafNotesApp() {
 
 @Composable
 private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit) {
+    var showDeleteConfirm by remember(note.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(10.dp)) {
@@ -216,7 +217,7 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                         contentDescription = "Favori",
                         tint = if (note.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
+                IconButton(onClick = { showDeleteConfirm = true }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
             }
             if (note.body.isNotBlank()) Text(note.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
@@ -227,6 +228,19 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Supprimer cette note ?") },
+            text = { Text("La note « ${note.title.ifBlank { "Sans titre" }} » sera supprimée de ta bibliothèque.") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteConfirm = false; onDelete() }) { Text("Supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Annuler") }
+            }
+        )
     }
 }
 
