@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -24,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.json.JSONArray
@@ -41,6 +45,12 @@ private data class Note(
     val updatedAt: Long = System.currentTimeMillis()
 )
 private data class NoteCategory(val name: String, val emoji: String, val color: Long)
+
+private val Oasis = Color(0xFF206B4D)
+private val Walnut = Color(0xFF6B4935)
+private val NaturalGold = Color(0xFFC5A46D)
+private val Cream = Color(0xFFDCCBB1)
+private val SandBorder = Color(0xFFB69A7B)
 
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 
@@ -104,7 +114,13 @@ private fun LeafNotesApp() {
     val safePage = page.coerceIn(0, pageCount - 1)
     val pageNotes = visible.drop(safePage * 5).take(5)
 
-    MaterialTheme(colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()) {
+    val appColors = if (darkTheme) {
+        darkColorScheme(primary = Oasis, secondary = Walnut, tertiary = NaturalGold)
+    } else {
+        lightColorScheme(primary = Oasis, secondary = Walnut, tertiary = NaturalGold,
+            background = Cream, surface = Cream, outline = SandBorder)
+    }
+    MaterialTheme(colorScheme = appColors) {
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(onClick = { editing = null; showEditor = true }) {
@@ -115,6 +131,9 @@ private fun LeafNotesApp() {
             Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp).padding(top = 14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("🍃 LeafVibe", color = Oasis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
                         Text("LeafNotes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                         Text("Ton espace, tes idées.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -158,9 +177,19 @@ private fun LeafNotesApp() {
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
-                        items(pageNotes, key = { it.id }) { note ->
+                    val screenWidth = LocalConfiguration.current.screenWidthDp
+                    val columns = when {
+                        screenWidth >= 1200 -> 5
+                        screenWidth >= 840 -> 3
+                        screenWidth >= 600 -> 2
+                        else -> 1
+                    }
+                    LazyVerticalGrid(columns = GridCells.Fixed(columns),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 12.dp)) {
+                        gridItems(pageNotes, key = { it.id }) { note ->
                             NoteCard(note,
                                 onEdit = { editing = note; showEditor = true },
                                 onFavorite = { saveNotes(notes.map {
@@ -204,7 +233,9 @@ private fun LeafNotesApp() {
 
 @Composable
 private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onDelete: () -> Unit) {
+    var confirmDelete by remember(note.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit),
+        border = androidx.compose.foundation.BorderStroke(1.dp, SandBorder),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -215,7 +246,7 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                         contentDescription = "Favori",
                         tint = if (note.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
+                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
             }
             if (note.body.isNotBlank()) Text(note.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
@@ -226,6 +257,15 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Supprimer cette note ?") },
+            text = { Text("Cette action supprimera définitivement cette note de la bibliothèque locale.") },
+            confirmButton = { TextButton(onClick = { onDelete(); confirmDelete = false }) { Text("Supprimer") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Annuler") } }
+        )
     }
 }
 
