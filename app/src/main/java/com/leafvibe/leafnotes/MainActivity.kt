@@ -120,10 +120,12 @@ private fun LeafNotesApp() {
             }) }
         }.toString()).apply()
     }
+    // Never delete categories: preserve existing entries and append new ones.
     fun saveCategories(value: List<NoteCategory>) {
-        categories = value
+        val merged = (categories + value).distinctBy { it.name.trim().lowercase() }
+        categories = merged
         prefs.edit().putString("categories", JSONArray().apply {
-            value.forEach { c -> put(JSONObject().apply {
+            merged.forEach { c -> put(JSONObject().apply {
                 put("name", c.name); put("emoji", c.emoji); put("color", c.color)
             }) }
         }.toString()).apply()
@@ -140,8 +142,14 @@ private fun LeafNotesApp() {
             val root = JSONObject(raw)
             val importedNotes = parseBackupNotes(root.optJSONArray("notes") ?: JSONArray())
             val importedCategories = parseBackupCategories(root.optJSONArray("categories") ?: JSONArray())
-            if (importedCategories.none { it.name == "Nouveaux" }) saveCategories(listOf(NoteCategory("Nouveaux", "✨", 0xFF8E7CC3)) + importedCategories)
-            else saveCategories(importedCategories)
+            val safeImportedCategories = if (importedCategories.none { it.name == "Nouveaux" })
+                listOf(NoteCategory("Nouveaux", "✨", 0xFF8E7CC3)) + importedCategories else importedCategories
+            saveCategories(safeImportedCategories)
+            val knownNames = (categories + safeImportedCategories).map { it.name.lowercase() }.toSet()
+            val missingCategories = importedNotes.map { it.category }.distinct()
+                .filter { it.isNotBlank() && it.lowercase() !in knownNames }
+                .map { NoteCategory(it, "📁", 0xFF6C9B80) }
+            saveCategories(missingCategories)
             saveNotes(importedNotes)
         }
     }
@@ -286,13 +294,7 @@ private fun LeafNotesApp() {
         saveNotes(changed)
         showEditor = false
     }
-    if (showCategoryManager) CategoryManagerDialog(categories, { showCategoryManager = false }) { categoryName ->
-        if (categoryName != "Nouveaux") {
-            saveNotes(notes.map { note -> if (note.category == categoryName) note.copy(category = "Nouveaux") else note })
-            saveCategories(categories.filterNot { it.name == categoryName })
-            if (selectedCategory == categoryName) selectedCategory = "Tous"
-        }
-    }
+    if (showCategoryManager) CategoryManagerDialog(categories) { showCategoryManager = false }
     if (showGraph) LeafGraphDialog(notes, onOpen = { note -> editing = note; showEditor = true; showGraph = false }) { showGraph = false }
     if (showSwipe) LeafSwipeDialog(notes, onOpen = { note -> editing = note; showEditor = true; showSwipe = false }) { showSwipe = false }
     if (showLearning) LeafLearningDialog(notes) { showLearning = false }
@@ -411,23 +413,20 @@ private fun loadCategories(prefs: android.content.SharedPreferences): List<NoteC
 
 
 @Composable
-private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () -> Unit, onDelete: (String) -> Unit) {
-    var pendingDelete by remember { mutableStateOf<NoteCategory?>(null) }
+private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Gérer les catégories et dossiers") },
+        title = { Text("Catégories et dossiers protégés") },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Les notes d'un dossier supprimé seront déplacées dans « Nouveaux ».", style = MaterialTheme.typography.bodySmall)
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Aucune catégorie ne sera supprimée. Les catégories déjà présentes et celles que tu créeras resteront dans ta bibliothèque, même après une restauration de sauvegarde.",
+                    style = MaterialTheme.typography.bodySmall)
                 categories.forEach { category ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(category.emoji + " " + category.name, Modifier.weight(1f))
-                        if (category.name == "Nouveaux") {
-                            Text("Protégé", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            TextButton(onClick = { pendingDelete = category }) { Text("Supprimer") }
-                        }
+                        Text("Conservée", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary)
                     }
                     HorizontalDivider()
                 }
@@ -435,17 +434,6 @@ private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () 
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
     )
-    pendingDelete?.let { category ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Supprimer « " + category.name + " » ?") },
-            text = { Text("Les notes de cette catégorie seront conservées et déplacées dans « Nouveaux ».") },
-            confirmButton = {
-                TextButton(onClick = { onDelete(category.name); pendingDelete = null }) { Text("Supprimer le dossier") }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Annuler") } }
-        )
-    }
 }
 
 @Composable
