@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { LeafNotesApp() } }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LeafNotesApp() {
     val context = LocalContext.current
