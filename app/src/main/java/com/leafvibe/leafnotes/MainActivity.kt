@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,7 +59,7 @@ data class Note(
     val updatedAt: Long = System.currentTimeMillis(),
     val reminderAt: Long = 0L
 )
-private data class NoteCategory(val name: String, val emoji: String, val color: Long)
+private data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String = "")
 
 private val Oasis = Color(0xFF206B4D)
 private val Walnut = Color(0xFF6B4935)
@@ -97,12 +98,14 @@ private fun LeafNotesApp() {
     var editing by remember { mutableStateOf<Note?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var showCategoryEditor by remember { mutableStateOf(false) }
+    var categoryParent by remember { mutableStateOf("") }
     var showCategoryManager by remember { mutableStateOf(false) }
     var showGraph by remember { mutableStateOf(false) }
     var showSwipe by remember { mutableStateOf(false) }
     var showLearning by remember { mutableStateOf(false) }
     var showQuiz by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var reminderTarget by remember { mutableStateOf<Note?>(null) }
     var permissionPending by remember { mutableStateOf<Note?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -126,7 +129,18 @@ private fun LeafNotesApp() {
         categories = merged
         prefs.edit().putString("categories", JSONArray().apply {
             merged.forEach { c -> put(JSONObject().apply {
-                put("name", c.name); put("emoji", c.emoji); put("color", c.color)
+                put("name", c.name); put("emoji", c.emoji); put("color", c.color); put("parent", c.parent)
+            }) }
+        }.toString()).apply()
+    }
+
+    // Exact save is reserved for an explicit, confirmed category deletion/move.
+    fun saveCategoriesExact(value: List<NoteCategory>) {
+        val safe = value.distinctBy { it.name.trim().lowercase() }
+        categories = safe
+        prefs.edit().putString("categories", JSONArray().apply {
+            safe.forEach { c -> put(JSONObject().apply {
+                put("name", c.name); put("emoji", c.emoji); put("color", c.color); put("parent", c.parent)
             }) }
         }.toString()).apply()
     }
@@ -193,6 +207,7 @@ private fun LeafNotesApp() {
                         darkTheme = !darkTheme
                         prefs.edit().putBoolean("dark", darkTheme).apply()
                     }) { Icon(Icons.Default.DarkMode, contentDescription = "Changer le thème") }
+                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Paramètres et aide") }
                 }
                 Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
@@ -209,7 +224,7 @@ private fun LeafNotesApp() {
                         FilterChip(selectedCategory == category.name, { selectedCategory = category.name; page = 0 },
                             label = { Text("${category.emoji} ${category.name}") })
                     }
-                    item { AssistChip(onClick = { showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
+                    item { AssistChip(onClick = { categoryParent = ""; showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
                     item { AssistChip(onClick = { showCategoryManager = true }, label = { Text("Gérer les dossiers") }) }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -294,7 +309,14 @@ private fun LeafNotesApp() {
         saveNotes(changed)
         showEditor = false
     }
-    if (showCategoryManager) CategoryManagerDialog(categories) { showCategoryManager = false }
+    if (showCategoryManager) CategoryManagerDialog(
+        categories = categories,
+        notes = notes,
+        onSaveCategories = { saveCategoriesExact(it) },
+        onSaveNotes = { saveNotes(it) },
+        onDismiss = { showCategoryManager = false }
+    )
+    if (showSettings) LeafSettingsDialog(darkTheme, { darkTheme = !darkTheme; prefs.edit().putBoolean("dark", darkTheme).apply() }, { showSettings = false; showBackup = true }, { showSettings = false })
     if (showGraph) LeafGraphDialog(notes, onOpen = { note -> editing = note; showEditor = true; showGraph = false }) { showGraph = false }
     if (showSwipe) LeafSwipeDialog(notes, onOpen = { note -> editing = note; showEditor = true; showSwipe = false }) { showSwipe = false }
     if (showLearning) LeafLearningDialog(notes) { showLearning = false }
@@ -304,12 +326,12 @@ private fun LeafNotesApp() {
         onImport = { backupImport.launch(arrayOf("application/json", "text/*")) },
         onDismiss = { showBackup = false }
     )
-    if (showCategoryEditor) CategoryEditorDialog({ showCategoryEditor = false }) { name, emoji ->
+    if (showCategoryEditor) CategoryEditorDialog(categories, categoryParent, { showCategoryEditor = false }) { name, emoji, parent ->
         val normalizedName = name.trim()
         if (normalizedName.isNotEmpty() &&
             !normalizedName.equals("Tous", true) &&
             categories.none { it.name.equals(normalizedName, true) }) {
-            saveCategories(categories + NoteCategory(normalizedName, emoji.ifBlank { "📁" }, 0xFF6C9B80))
+            saveCategories(categories + NoteCategory(normalizedName, emoji.ifBlank { "📁" }, 0xFF6C9B80, parent))
         }
         showCategoryEditor = false
     }
@@ -379,17 +401,23 @@ private fun NoteEditorDialog(initial: Note?, categories: List<NoteCategory>, onD
 }
 
 @Composable
-private fun CategoryEditorDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+private fun CategoryEditorDialog(categories: List<NoteCategory>, initialParent: String, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("📁") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Créer une catégorie") },
+    var parent by remember { mutableStateOf(initialParent) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Créer une catégorie ou sous-catégorie") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nom") }, singleLine = true)
                 OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true)
+                Text("Dossier parent (laisser vide pour une grande catégorie)")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { FilterChip(parent.isBlank(), { parent = "" }, label = { Text("Aucun") }) }
+                    items(categories) { c -> FilterChip(parent == c.name, { parent = c.name }, label = { Text(c.emoji + " " + c.name) }) }
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name, emoji) }, enabled = name.isNotBlank()) { Text("Créer") } },
+        confirmButton = { TextButton(onClick = { onSave(name, emoji, parent) }, enabled = name.isNotBlank()) { Text("Créer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } })
 }
 
@@ -407,26 +435,64 @@ private fun loadCategories(prefs: android.content.SharedPreferences): List<NoteC
     val array = JSONArray(raw)
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
-        NoteCategory(o.getString("name"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
+        NoteCategory(o.getString("name"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80), o.optString("parent", ""))
     }
 }.getOrDefault(starterCategories)
 
 
 @Composable
-private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () -> Unit) {
+private fun CategoryManagerDialog(
+    categories: List<NoteCategory>,
+    notes: List<Note>,
+    onSaveCategories: (List<NoteCategory>) -> Unit,
+    onSaveNotes: (List<Note>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var deleting by remember { mutableStateOf<NoteCategory?>(null) }
+    var moveTarget by remember { mutableStateOf("") }
+    val selected = deleting
+    val descendants = remember(categories, selected) {
+        if (selected == null) emptySet() else buildSet {
+            val queue = ArrayDeque<String>()
+            queue.add(selected.name)
+            while (queue.isNotEmpty()) {
+                val parent = queue.removeFirst()
+                categories.filter { it.parent == parent }.forEach {
+                    if (add(it.name)) queue.add(it.name)
+                }
+            }
+        }
+    }
+    val destinations = categories.filter { it.name !in descendants }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Catégories et dossiers protégés") },
+        title = { Text("Gérer les catégories et dossiers") },
         text = {
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Aucune catégorie ne sera supprimée. Les catégories déjà présentes et celles que tu créeras resteront dans ta bibliothèque, même après une restauration de sauvegarde.",
-                    style = MaterialTheme.typography.bodySmall)
-                categories.forEach { category ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(category.emoji + " " + category.name, Modifier.weight(1f))
-                        Text("Conservée", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary)
+            Column(
+                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Les dossiers peuvent être supprimés après confirmation. Si un dossier contient des notes ou des sous-dossiers, déplace-les vers une autre catégorie : aucun contenu ne sera effacé.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                categories.sortedWith(compareBy<NoteCategory> { it.parent }.thenBy { it.name }).forEach { category ->
+                    val depth = generateSequence(category) { current ->
+                        categories.firstOrNull { it.name == current.parent }
+                    }.count().minus(1).coerceAtLeast(0)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "  ".repeat(depth) + category.emoji + " " + category.name,
+                            Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            deleting = category
+                            moveTarget = category.parent.takeIf { parent -> categories.any { it.name == parent } }
+                                ?: categories.firstOrNull { it.name != category.name && it.name !in descendants }?.name.orEmpty()
+                        }) { Text("Supprimer") }
                     }
                     HorizontalDivider()
                 }
@@ -434,6 +500,62 @@ private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () 
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
     )
+
+    if (selected != null) {
+        val directChildren = categories.filter { it.parent == selected.name }
+        val noteCount = notes.count { it.category == selected.name }
+        val hasContent = directChildren.isNotEmpty() || noteCount > 0
+        val validTargets = categories.filter { it.name !in descendants }
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Supprimer « ${selected.name} » ?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (hasContent) {
+                            "Ce dossier contient $noteCount note(s) et ${directChildren.size} sous-dossier(s). Choisis où déplacer les notes et rattacher les sous-dossiers avant la suppression."
+                        } else {
+                            "Ce dossier est vide. Tu peux le supprimer sans toucher aux autres données."
+                        }
+                    )
+                    if (hasContent) {
+                        Text("Destination :", style = MaterialTheme.typography.labelLarge)
+                        validTargets.forEach { target ->
+                            FilterChip(
+                                selected = moveTarget == target.name,
+                                onClick = { moveTarget = target.name },
+                                label = { Text(target.emoji + " " + target.name) }
+                            )
+                        }
+                        if (validTargets.isEmpty()) {
+                            Text("Crée d’abord une autre catégorie pour déplacer le contenu.", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !hasContent || validTargets.any { it.name == moveTarget },
+                    onClick = {
+                        val remaining = categories.filterNot { it.name == selected.name }.map { category ->
+                            if (category.parent == selected.name) category.copy(parent = moveTarget) else category
+                        }
+                        if (hasContent) {
+                            onSaveNotes(notes.map { note ->
+                                if (note.category == selected.name) note.copy(category = moveTarget, updatedAt = System.currentTimeMillis())
+                                else note
+                            })
+                        }
+                        onSaveCategories(remaining)
+                        deleting = null
+                    }
+                ) { Text("Déplacer et supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text("Annuler") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -598,7 +720,7 @@ private fun parseBackupNotes(array: JSONArray): List<Note> = (0 until array.leng
 
 private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 until array.length()).map { i ->
     val o = array.getJSONObject(i)
-    NoteCategory(o.optString("name", "Dossier"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
+    NoteCategory(o.optString("name", "Dossier"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80), o.optString("parent", ""))
 }.distinctBy { it.name.lowercase() }.filter { it.name.isNotBlank() }
 
 
@@ -631,4 +753,18 @@ private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Lon
         .addTag("leafnotes-reminder-" + note.id)
         .build()
     WorkManager.getInstance(context).enqueue(request)
+}
+
+@Composable
+private fun LeafSettingsDialog(darkTheme: Boolean, onToggleTheme: () -> Unit, onBackup: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Paramètres LeafNotes") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Personnalise ton espace et retrouve les outils principaux.")
+            OutlinedButton(onClick = onToggleTheme, modifier = Modifier.fillMaxWidth()) { Text(if (darkTheme) "Passer au thème clair" else "Passer au thème sombre") }
+            OutlinedButton(onClick = onBackup, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir LeafBackup") }
+            Text("LeafGraph : filtre une catégorie pour isoler son graphe. Pince pour zoomer, fais glisser pour déplacer, puis choisis le fond et la forme des nœuds.", style = MaterialTheme.typography.bodySmall)
+            Text("LeafSwipe : révise en cartes. LeafLearning : reformule avant de révéler. LeafQuiz : teste ta mémorisation.", style = MaterialTheme.typography.bodySmall)
+            Text("IA hybride et synchronisation automatique : prévues dans la feuille de route, pas encore activées dans cette version.", style = MaterialTheme.typography.bodySmall)
+        }
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } })
 }

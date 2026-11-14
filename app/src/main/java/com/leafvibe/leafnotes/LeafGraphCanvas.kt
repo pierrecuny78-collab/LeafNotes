@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -44,8 +46,16 @@ fun LeafGraphCanvasDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: 
     var zoom by remember { mutableStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var selected by remember { mutableStateOf<Note?>(null) }
-    val points = remember(notes) {
-        val groups = notes.groupBy { it.category }.toSortedMap()
+    var activeCategory by remember { mutableStateOf("Toutes") }
+    var backgroundMode by remember { mutableStateOf("Crème") }
+    var nodeMode by remember { mutableStateOf("Rond") }
+    var showCategoryPicker by remember { mutableStateOf(false) }
+    val categories = remember(notes) { notes.map { it.category }.distinct().sorted() }
+    val filteredNotes = remember(notes, activeCategory) {
+        if (activeCategory == "Toutes") notes else notes.filter { it.category == activeCategory }
+    }
+    val points = remember(filteredNotes) {
+        val groups = filteredNotes.groupBy { it.category }.toSortedMap()
         val result = mutableListOf<LeafGraphPoint>()
         val groupCount = groups.size.coerceAtLeast(1)
         groups.entries.forEachIndexed { groupIndex, entry ->
@@ -80,17 +90,37 @@ fun LeafGraphCanvasDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("LeafGraph", style = MaterialTheme.typography.headlineSmall)
-                        Text("Carte interactive · ${notes.size} notes · ${links.size} liens explicites",
+                        Text("Carte interactive · ${filteredNotes.size} notes · ${links.size} liens explicites",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = { zoom = 1f; pan = Offset.Zero }) { Text("Recentrer") }
                     TextButton(onClick = onDismiss) { Text("Fermer") }
                 }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { androidx.compose.material3.FilterChip(selected = activeCategory == "Toutes", onClick = { activeCategory = "Toutes" }, label = { Text("Toutes") }) }
+                    items(categories) { category ->
+                        androidx.compose.material3.FilterChip(selected = activeCategory == category, onClick = { activeCategory = category }, label = { Text(category) })
+                    }
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 5.dp)) {
+                    items(listOf("Crème", "Nuit", "Sauge", "Papier")) { mode ->
+                        androidx.compose.material3.FilterChip(selected = backgroundMode == mode, onClick = { backgroundMode = mode }, label = { Text(mode) })
+                    }
+                    items(listOf("Rond", "Carré", "Losange")) { mode ->
+                        androidx.compose.material3.FilterChip(selected = nodeMode == mode, onClick = { nodeMode = mode }, label = { Text(mode) })
+                    }
+                }
                 Text("Pince pour zoomer · fais glisser pour déplacer · touche un nœud pour ouvrir la note",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp))
-                Box(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)) {
+                val graphBackground = when (backgroundMode) {
+                    "Nuit" -> Color(0xFF17231E)
+                    "Sauge" -> Color(0xFFDCE7DC)
+                    "Papier" -> Color(0xFFF1E8D8)
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                Box(Modifier.weight(1f).fillMaxWidth().background(graphBackground)) {
                     Canvas(
                         Modifier.fillMaxSize()
                             .pointerInput(zoom) {
@@ -150,15 +180,33 @@ fun LeafGraphCanvasDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: 
                                 val p1 = mapped(a.x, a.y)
                                 val p2 = mapped(b.x, b.y)
                                 native.drawLine(p1.x, p1.y, p2.x, p2.y, linkPaint)
+                                // Petite pointe directionnelle pour rendre les relations explicites lisibles.
+                                val angle = kotlin.math.atan2(p2.y - p1.y, p2.x - p1.x)
+                                val head = 16f
+                                val left = Offset(p2.x - head * kotlin.math.cos(angle - 0.48f), p2.y - head * kotlin.math.sin(angle - 0.48f))
+                                val right = Offset(p2.x - head * kotlin.math.cos(angle + 0.48f), p2.y - head * kotlin.math.sin(angle + 0.48f))
+                                native.drawLine(p2.x, p2.y, left.x, left.y, linkPaint)
+                                native.drawLine(p2.x, p2.y, right.x, right.y, linkPaint)
                             }
                         }
                         points.forEach { point ->
                             val p = mapped(point.x, point.y)
                             val radius = (17f * zoom).coerceIn(7f, 44f)
-                            native.drawCircle(p.x, p.y, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                 color = if (point.note.favorite) android.graphics.Color.rgb(197, 164, 109)
                                     else android.graphics.Color.rgb(32, 107, 77)
-                            })
+                            }
+                            when (nodeMode) {
+                                "Carré" -> native.drawRoundRect(p.x - radius, p.y - radius, p.x + radius, p.y + radius, 7f, 7f, nodePaint)
+                                "Losange" -> {
+                                    val path = android.graphics.Path().apply {
+                                        moveTo(p.x, p.y - radius); lineTo(p.x + radius, p.y)
+                                        lineTo(p.x, p.y + radius); lineTo(p.x - radius, p.y); close()
+                                    }
+                                    native.drawPath(path, nodePaint)
+                                }
+                                else -> native.drawCircle(p.x, p.y, radius, nodePaint)
+                            }
                             textPaint.textSize = (25f * zoom).coerceIn(12f, 42f)
                             val label = point.note.title.ifBlank { "Sans titre" }.take(24)
                             native.drawText(label, p.x, p.y + radius + 24f, textPaint)
@@ -169,7 +217,7 @@ fun LeafGraphCanvasDialog(notes: List<Note>, onOpen: (Note) -> Unit, onDismiss: 
                     OutlinedButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(0.45f) }, modifier = Modifier.weight(1f)) { Text("− Zoom") }
                     OutlinedButton(onClick = { zoom = (zoom * 1.25f).coerceAtMost(4f) }, modifier = Modifier.weight(1f)) { Text("+ Zoom") }
                 }
-                Text("Pour créer un lien : écris [[Titre exact de la note]] dans le texte d’une note.",
+                Text("Filtre une catégorie pour isoler son graphe. Les flèches représentent les liens [[Titre exact]] écrits dans les notes.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp))
