@@ -20,7 +20,9 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 body = item.optString("body"),
                 category = item.optString("category", "Nouveaux"),
                 favorite = item.optBoolean("favorite", false),
-                updatedAt = item.optLong("updatedAt", 0L)
+                updatedAt = item.optLong("updatedAt", 0L),
+                tags = item.optJSONArray("tags").toStringList(),
+                checklist = item.optJSONArray("checklist").toChecklist()
             )
         }
     }.getOrDefault(emptyList())
@@ -34,7 +36,9 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 .put("body", note.body)
                 .put("category", note.category)
                 .put("favorite", note.favorite)
-                .put("updatedAt", note.updatedAt))
+                .put("updatedAt", note.updatedAt)
+                .put("tags", JSONArray(note.tags))
+                .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } }))
         }
         preferences.edit().putString(KEY_NOTES, array.toString()).apply()
     }
@@ -80,7 +84,9 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     body = note.optString("body"),
                     category = note.optString("category", "Nouveaux"),
                     favorite = note.optBoolean("favorite", false),
-                    updatedAt = note.optLong("updatedAt", 0L)
+                    updatedAt = note.optLong("updatedAt", 0L),
+                    tags = note.optJSONArray("tags").toStringList(),
+                    checklist = note.optJSONArray("checklist").toChecklist()
                 ),
                 deletedAt = item.optLong("deletedAt", 0L)
             )
@@ -99,7 +105,9 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     .put("body", note.body)
                     .put("category", note.category)
                     .put("favorite", note.favorite)
-                    .put("updatedAt", note.updatedAt)))
+                    .put("updatedAt", note.updatedAt)
+                    .put("tags", JSONArray(note.tags))
+                    .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })))
         }
         preferences.edit().putString(KEY_TRASH, array.toString()).apply()
     }
@@ -108,5 +116,24 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
         private const val KEY_NOTES = "notes"
         private const val KEY_CATEGORIES = "categories"
         private const val KEY_TRASH = "trash"
+    }
+}
+
+private fun JSONArray?.toStringList(): List<String> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { optString(it).takeIf(String::isNotBlank) }
+}
+
+private fun JSONArray?.toChecklist(): List<ChecklistItem> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index ->
+        val item = optJSONObject(index) ?: return@mapNotNull null
+        val text = item.optString("text").trim()
+        if (text.isBlank()) null else ChecklistItem(
+            id = item.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+            text = text,
+            checked = item.optBoolean("checked", false),
+            position = item.optInt("position", index)
+        )
     }
 }
