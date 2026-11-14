@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,7 +35,7 @@ import java.util.Date
 import java.util.UUID
 import android.widget.Toast
 
-internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis())
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList())
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
@@ -71,6 +72,9 @@ private fun LeafNotesApp() {
     var categoryEditor by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("📁") }
+    var categoryColor by remember { mutableStateOf("#6C9B80") }
+    var categoryBeingEdited by remember { mutableStateOf<NoteCategory?>(null) }
+    var categoryToDelete by remember { mutableStateOf<NoteCategory?>(null) }
 
     fun saveNotes(v: List<Note>) {
         store.saveNotes(v)
@@ -119,7 +123,7 @@ private fun LeafNotesApp() {
 
     val visible = notes.filter { n ->
         val match = when (selected) { "Tous" -> true; FAVORITES_FILTER -> n.favorite; else -> n.category == selected }
-        match && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true))
+        match && (query.isBlank() || LeafNotesOrganization.searchMatches(n, query, n.tags))
     }.sortedByDescending { it.updatedAt }
     val pages = maxOf(1, (visible.size + 4) / 5)
     val safePage = page.coerceIn(0, pages - 1)
@@ -240,18 +244,42 @@ private fun LeafNotesApp() {
     if (editor) {
         var title by remember(editing) { mutableStateOf(editing?.title.orEmpty()) }
         var body by remember(editing) { mutableStateOf(editing?.body.orEmpty()) }
+        var tagsText by remember(editing) { mutableStateOf(editing?.tags?.joinToString(", ").orEmpty()) }
+        var checklist by remember(editing) { mutableStateOf(editing?.checklist ?: emptyList()) }
+        var checklistDraft by remember(editing) { mutableStateOf("") }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") })
                 OutlinedTextField(body, { body = it }, label = { Text("Contenu") }, minLines = 4)
+                OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Étiquettes (séparées par des virgules)") }, singleLine = true)
+                Text("Liste à cocher", style = MaterialTheme.typography.titleSmall)
+                checklist.forEach { item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = item.checked, onCheckedChange = { checked ->
+                            checklist = checklist.map { if (it.id == item.id) it.copy(checked = checked) else it }
+                        })
+                        Text(item.text, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { checklist = checklist.filterNot { it.id == item.id } }) { Icon(Icons.Default.Delete, contentDescription = "Retirer") }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(checklistDraft, { checklistDraft = it }, modifier = Modifier.weight(1f), label = { Text("Nouvel élément") }, singleLine = true)
+                    IconButton(onClick = {
+                        if (checklistDraft.isNotBlank()) {
+                            checklist = checklist + ChecklistItem(text = checklistDraft.trim(), position = checklist.size)
+                            checklistDraft = ""
+                        }
+                    }) { Icon(Icons.Default.Add, contentDescription = "Ajouter à la liste") }
+                }
                 Text("Enregistrer dans : " + category)
                 categories.forEach { c -> TextButton(onClick = { category = c.name }) { Text((if (c.parent == null) "" else "↳ ") + c.emoji + " " + c.name) } }
             } },
             confirmButton = { TextButton(onClick = {
                 val old = editing
-                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category)
-                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, updatedAt = System.currentTimeMillis()) else it })
+                val tags = LeafNotesOrganization.normalizeTags(tagsText.split(","))
+                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist)
+                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, updatedAt = System.currentTimeMillis()) else it })
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
