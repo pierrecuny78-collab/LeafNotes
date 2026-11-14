@@ -170,6 +170,14 @@ private fun LeafNotesApp() {
                                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Icon(if (childCount > 0) Icons.Default.Folder else Icons.Default.ArrowForward, contentDescription = "Ouvrir")
+                                IconButton(onClick = {
+                                    categoryBeingEdited = c
+                                    name = c.name
+                                    emoji = c.emoji
+                                    categoryColor = String.format("#%06X", (c.color and 0xFFFFFF))
+                                    categoryEditor = true
+                                }) { Icon(Icons.Default.Edit, contentDescription = "Modifier la catégorie") }
+                                IconButton(onClick = { categoryToDelete = c }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer la catégorie") }
                                 }
                             }
                         }
@@ -340,18 +348,56 @@ private fun LeafNotesApp() {
         }
     )
 
-    if (categoryEditor) AlertDialog(onDismissRequest = { categoryEditor = false }, title = { Text(if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
+    if (categoryToDelete != null) {
+        val target = categoryToDelete!!
+        AlertDialog(
+            onDismissRequest = { categoryToDelete = null },
+            title = { Text("Supprimer « " + target.name + " » ?") },
+            text = { Text("Les notes seront déplacées vers le dossier parent ou « Nouveaux ». Les sous-dossiers seront rattachés au parent.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val destination = target.parent ?: "Nouveaux"
+                    val updatedCategories = categories.filterNot { it.name == target.name }
+                        .map { if (it.parent == target.name) it.copy(parent = target.parent) else it }
+                    saveCategories(updatedCategories)
+                    saveNotes(notes.map { if (it.category == target.name) it.copy(category = destination) else it })
+                    if (parent == target.name) parent = target.parent
+                    categoryToDelete = null
+                }) { Text("Supprimer") }
+            },
+            dismissButton = { TextButton(onClick = { categoryToDelete = null }) { Text("Annuler") } }
+        )
+    }
+
+    if (categoryEditor) AlertDialog(onDismissRequest = { categoryEditor = false }, title = { Text(if (categoryBeingEdited != null) "Modifier la catégorie" else if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Nom") }, singleLine = true)
             OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true)
-            Text(if (parent == null) "Emplacement : racine" else "Dans : " + parent)
+            OutlinedTextField(categoryColor, { categoryColor = it }, label = { Text("Couleur HEX (#RRGGBB)") }, singleLine = true)
+            Text(if (categoryBeingEdited != null) "Modification du dossier" else if (parent == null) "Emplacement : racine" else "Dans : " + parent)
         } },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
             val clean = name.trim()
-            if (!clean.equals("Tous", true) && categories.none { it.name.equals(clean, true) })
-                saveCategories(categories + NoteCategory(clean, emoji.ifBlank { "📁" }, 0xFF6C9B80, parent))
-            name = ""; emoji = "📁"; categoryEditor = false
+            val parsedColor = runCatching { android.graphics.Color.parseColor(categoryColor.trim()) }.getOrDefault(android.graphics.Color.rgb(108, 155, 128)).toLong() and 0xFFFFFFFFL
+            val oldCategory = categoryBeingEdited
+            if (!clean.equals("Tous", true)) {
+                if (oldCategory == null && categories.none { it.name.equals(clean, true) }) {
+                    saveCategories(categories + NoteCategory(clean, emoji.ifBlank { "📁" }, parsedColor, parent))
+                } else if (oldCategory != null && (clean.equals(oldCategory.name, true) || categories.none { it.name.equals(clean, true) })) {
+                    val renamed = categories.map { c ->
+                        when {
+                            c.name == oldCategory.name -> c.copy(name = clean, emoji = emoji.ifBlank { "📁" }, color = parsedColor)
+                            c.parent == oldCategory.name -> c.copy(parent = clean)
+                            else -> c
+                        }
+                    }
+                    saveCategories(renamed)
+                    saveNotes(notes.map { if (it.category == oldCategory.name) it.copy(category = clean) else it })
+                    if (parent == oldCategory.name) parent = clean
+                }
+            }
+            name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryBeingEdited = null; categoryEditor = false
         }) { Text("Créer") } },
-        dismissButton = { TextButton(onClick = { categoryEditor = false }) { Text("Annuler") } })
+        dismissButton = { TextButton(onClick = { categoryBeingEdited = null; name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryEditor = false }) { Text("Annuler") } })
 }
 
