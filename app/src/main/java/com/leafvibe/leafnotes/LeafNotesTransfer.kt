@@ -1,0 +1,167 @@
+package com.leafvibe.leafnotes
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.nio.charset.StandardCharsets
+
+/**
+ * Versioned, portable LeafNotes archive format.
+ *
+ * A .leafnotes file is UTF-8 JSON so it can be copied to a computer, inspected,
+ * edited with a text editor, and imported again. Unknown future fields are ignored.
+ */
+internal object LeafNotesTransfer {
+    private const val FORMAT = "leafnotes"
+    private const val VERSION = 1
+
+    data class Archive(
+        val notes: List<Note>,
+        val categories: List<NoteCategory>,
+        val exportedAt: Long
+    )
+
+    data class ImportResult(
+        val notes: List<Note>,
+        val categories: List<NoteCategory>,
+        val addedNotes: Int,
+        val skippedNotes: Int,
+        val addedCategories: Int
+    )
+
+    fun encode(notes: List<Note>, categories: List<NoteCategory>): ByteArray {
+        val root = JSONObject()
+            .put("format", FORMAT)
+            .put("version", VERSION)
+            .put("exportedAt", System.currentTimeMillis())
+            .put("notes", JSONArray().apply {
+                notes.forEach { note ->
+                    put(JSONObject()
+                        .put("id", note.id)
+                        .put("title", note.title)
+                        .put("body", note.body)
+                        .put("category", note.category)
+                        .put("favorite", note.favorite)
+                        .put("updatedAt", note.updatedAt))
+                }
+            })
+            .put("categories", JSONArray().apply {
+                categories.forEach { category ->
+                    put(JSONObject()
+                        .put("name", category.name)
+                        .put("emoji", category.emoji)
+                        .put("color", category.color)
+                        .put("parent", category.parent ?: JSONObject.NULL))
+                }
+            })
+        return root.toString(2).toByteArray(StandardCharsets.UTF_8)
+    }
+
+    fun decode(bytes: ByteArray): Archive {
+        require(bytes.size <= 50 * 1024 * 1024) { "Archive trop volumineuse (50 Mo maximum)." }
+        val root = JSONObject(String(bytes, StandardCharsets.UTF_8))
+        require(root.optString("format") == FORMAT) { "Ce fichier n'est pas une archive LeafNotes." }
+        val version = root.optInt("version", -1)
+        require(version in 1..VERSION) { "Version d'archive non prise en charge : $version." }
+
+        val notesJson = root.optJSONArray("notes") ?: JSONArray()
+        val notes = (0 until notesJson.length()).mapNotNull { index ->
+            val item = notesJson.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            Note(
+                id = id,
+                title = item.optString("title"),
+                body = item.optString("body"),
+                category = item.optString("category", "Nouveaux"),
+                favorite = item.optBoolean("favorite", false),
+                updatedAt = item.optLong("updatedAt", 0L)
+            )
+        }
+
+        val categoriesJson = root.optJSONArray("categories") ?: JSONArray()
+        val categories = (0 until categoriesJson.length()).mapNotNull { index ->
+            val item = categoriesJson.optJSONObject(index) ?: return@mapNotNull null
+            val name = item.optString("name").trim()
+            if (name.isBlank()) return@mapNotNull null
+            NoteCategory(
+                name = name,
+                emoji = item.optString("emoji", "📁"),
+                color = item.optLong("color", 0xFF6C9B80),
+                parent = item.optString("parent").takeIf { it.isNotBlank() && it != "null" }
+            )
+        }
+        return Archive(notes, categories, root.optLong("exportedAt", 0L))
+    }
+
+    /**
+     * Safe merge: existing notes are never overwritten. IDs already present are
+     * skipped; category name collisions are resolved with a readable suffix.
+     */
+    fun merge(
+        currentNotes: List<Note>,
+        currentCategories: List<NoteCategory>,
+        archive: Archive
+    ): ImportResult {
+        val existingIds = currentNotes.mapTo(mutableSetOf()) { it.id }
+        val incomingNotes = archive.notes.filter { existingIds.add(it.id) }
+        val skipped = archive.notes.size - incomingNotes.size
+
+        val names = currentCategories.mapTo(mutableSetOf()) { it.name.lowercase() }
+        val categoryMap = linkedMapOf<String, String>()
+        val incomingCategories = archive.categories.mapNotNull { category ->
+            val original = category.name
+            var candidate = original
+            var suffix = 2
+            while (!names.add(candidate.lowercase())) {
+                candidate = "$original ($suffix)"
+                suffix++
+            }
+            categoryMap[original] = candidate
+            category.copy(name = candidate)
+        }
+        val remappedNotes = incomingNotes.map { note ->
+            note.copy(category = categoryMap[note.category] ?: note.category)
+        }
+        return ImportResult(
+            notes = currentNotes + remappedNotes,
+            categories = currentCategories + incomingCategories,
+            addedNotes = remappedNotes.size,
+            skippedNotes = skipped,
+            addedCategories = incomingCategories.size
+        )
+    }
+
+    fun exportText(notes: List<Note>): ByteArray {
+        val text = notes.joinToString("\n\n----------------------------------------\n\n") { note ->
+            buildString {
+                appendLine(note.title.ifBlank { "Sans titre" })
+                appendLine("Catégorie : ${note.category}")
+                appendLine("Modifiée : ${note.updatedAt}")
+                appendLine()
+                append(note.body)
+            }
+        }
+        return text.toByteArray(StandardCharsets.UTF_8)
+    }
+}
+
+/** Soft-delete record. Keep the original note intact so it can be restored. */
+internal data class TrashedNote(
+    val note: Note,
+    val deletedAt: Long = System.currentTimeMillis()
+)
+
+internal object LeafNotesTrash {
+    fun moveToTrash(notes: List<Note>, trash: List<TrashedNote>, id: String): Pair<List<Note>, List<TrashedNote>> {
+        val target = notes.firstOrNull { it.id == id } ?: return notes to trash
+        return notes.filterNot { it.id == id } to (trash.filterNot { it.note.id == id } + TrashedNote(target))
+    }
+
+    fun restore(trash: List<TrashedNote>, id: String, notes: List<Note>): Pair<List<Note>, List<TrashedNote>> {
+        val item = trash.firstOrNull { it.note.id == id } ?: return notes to trash
+        if (notes.any { it.id == id }) return notes to trash
+        return (notes + item.note) to trash.filterNot { it.note.id == id }
+    }
+
+    fun permanentlyDelete(trash: List<TrashedNote>, id: String): List<TrashedNote> =
+        trash.filterNot { it.note.id == id }
+}
