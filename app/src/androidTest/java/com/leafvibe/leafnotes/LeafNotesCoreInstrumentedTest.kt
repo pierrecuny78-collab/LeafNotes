@@ -78,4 +78,27 @@ class LeafNotesCoreInstrumentedTest {
         assertFalse(LeafNotesOrganization.searchMatches(note, "géographie"))
         assertNotNull(LeafNotesOrganization.validateCategoryMove("Cours", "Matrices", categories))
     }
+
+    @Test
+    fun localStorePersistsNotesCategoriesAndTrashAcrossInstances() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("leafnotes-test-store", android.content.Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        val firstStore = LeafNotesStore(preferences)
+        val note = Note(id = "persisted", title = "Test durable", body = "Contenu", category = "Maths", favorite = true, updatedAt = 99L)
+        val categories = listOf(
+            NoteCategory("Cours", "📚", 1L),
+            NoteCategory("Maths", "➗", 2L, "Cours")
+        )
+        firstStore.saveNotes(listOf(note))
+        firstStore.saveCategories(categories)
+        firstStore.saveTrash(listOf(TrashedNote(note, deletedAt = 123L)))
+
+        val reopenedStore = LeafNotesStore(preferences)
+        assertEquals(listOf(note), reopenedStore.loadNotes())
+        assertEquals(categories, reopenedStore.loadCategories(emptyList()))
+        assertEquals(listOf(TrashedNote(note, deletedAt = 123L)), reopenedStore.loadTrash())
+        preferences.edit().clear().commit()
+    }
+
 }
