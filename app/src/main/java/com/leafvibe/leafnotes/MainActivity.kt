@@ -98,6 +98,7 @@ private fun LeafNotesApp() {
     var editing by remember { mutableStateOf<Note?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var showCategoryEditor by remember { mutableStateOf(false) }
+    var categoryParent by remember { mutableStateOf("") }
     var showCategoryManager by remember { mutableStateOf(false) }
     var showGraph by remember { mutableStateOf(false) }
     var showSwipe by remember { mutableStateOf(false) }
@@ -212,7 +213,7 @@ private fun LeafNotesApp() {
                         FilterChip(selectedCategory == category.name, { selectedCategory = category.name; page = 0 },
                             label = { Text("${category.emoji} ${category.name}") })
                     }
-                    item { AssistChip(onClick = { showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
+                    item { AssistChip(onClick = { categoryParent = ""; showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
                     item { AssistChip(onClick = { showCategoryManager = true }, label = { Text("Gérer les dossiers") }) }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -308,12 +309,12 @@ private fun LeafNotesApp() {
         onImport = { backupImport.launch(arrayOf("application/json", "text/*")) },
         onDismiss = { showBackup = false }
     )
-    if (showCategoryEditor) CategoryEditorDialog({ showCategoryEditor = false }) { name, emoji ->
+    if (showCategoryEditor) CategoryEditorDialog(categories, categoryParent, { showCategoryEditor = false }) { name, emoji, parent ->
         val normalizedName = name.trim()
         if (normalizedName.isNotEmpty() &&
             !normalizedName.equals("Tous", true) &&
             categories.none { it.name.equals(normalizedName, true) }) {
-            saveCategories(categories + NoteCategory(normalizedName, emoji.ifBlank { "📁" }, 0xFF6C9B80))
+            saveCategories(categories + NoteCategory(normalizedName, emoji.ifBlank { "📁" }, 0xFF6C9B80, parent))
         }
         showCategoryEditor = false
     }
@@ -383,17 +384,23 @@ private fun NoteEditorDialog(initial: Note?, categories: List<NoteCategory>, onD
 }
 
 @Composable
-private fun CategoryEditorDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+private fun CategoryEditorDialog(categories: List<NoteCategory>, initialParent: String, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("📁") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Créer une catégorie") },
+    var parent by remember { mutableStateOf(initialParent) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Créer une catégorie ou sous-catégorie") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nom") }, singleLine = true)
                 OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true)
+                Text("Dossier parent (laisser vide pour une grande catégorie)")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { FilterChip(parent.isBlank(), { parent = "" }, label = { Text("Aucun") }) }
+                    items(categories) { c -> FilterChip(parent == c.name, { parent = c.name }, label = { Text(c.emoji + " " + c.name) }) }
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name, emoji) }, enabled = name.isNotBlank()) { Text("Créer") } },
+        confirmButton = { TextButton(onClick = { onSave(name, emoji, parent) }, enabled = name.isNotBlank()) { Text("Créer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } })
 }
 
