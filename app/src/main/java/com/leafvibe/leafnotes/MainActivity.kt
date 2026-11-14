@@ -356,8 +356,10 @@ private fun LeafNotesApp() {
             text = { Text("Les notes seront déplacées vers le dossier parent ou « Nouveaux ». Les sous-dossiers seront rattachés au parent.") },
             confirmButton = {
                 TextButton(onClick = {
-                    val destination = target.parent ?: "Nouveaux"
-                    val updatedCategories = categories.filterNot { it.name == target.name }
+                    val fallbackCategory = categories.firstOrNull { it.name != target.name && it.parent == null }?.name ?: "Nouveaux"
+                    val destination = target.parent ?: fallbackCategory
+                    val remainingCategories = categories.filterNot { it.name == target.name }
+                    val updatedCategories = (if (remainingCategories.isEmpty()) listOf(NoteCategory("Nouveaux", "✨", 0xFF8E7CC3)) else remainingCategories)
                         .map { if (it.parent == target.name) it.copy(parent = target.parent) else it }
                     saveCategories(updatedCategories)
                     saveNotes(notes.map { if (it.category == target.name) it.copy(category = destination) else it })
@@ -398,7 +400,7 @@ private fun LeafNotesApp() {
                 }
             }
             name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryBeingEdited = null; categoryEditor = false
-        }) { Text("Créer") } },
+        }) { Text(if (categoryBeingEdited == null) "Créer" else "Enregistrer") } },
         dismissButton = { TextButton(onClick = { categoryBeingEdited = null; name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryEditor = false }) { Text("Annuler") } })
 }
 
