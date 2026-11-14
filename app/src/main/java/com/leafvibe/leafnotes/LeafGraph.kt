@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -132,7 +134,11 @@ internal fun LeafGraphScreen(
 @Composable
 private fun GraphGroupCard(group: GraphGroup, onOpenNote: (Note) -> Unit) {
     val category = group.category
-    Card(Modifier.fillMaxWidth()) {
+    val nodeColor = category?.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = nodeColor.copy(alpha = 0.12f))
+    ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(category?.emoji ?: "📄", style = MaterialTheme.typography.titleLarge)
@@ -147,7 +153,7 @@ private fun GraphGroupCard(group: GraphGroup, onOpenNote: (Note) -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text("●", color = MaterialTheme.colorScheme.primary)
+                Text("●", color = nodeColor)
             }
             if (group.notes.isNotEmpty()) {
                 Row(
@@ -155,7 +161,7 @@ private fun GraphGroupCard(group: GraphGroup, onOpenNote: (Note) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("└─", color = MaterialTheme.colorScheme.primary)
+                    Text("└─", color = nodeColor)
                     group.notes.forEach { note ->
                         Card(onClick = { onOpenNote(note) }) {
                             Column(Modifier.width(190.dp).padding(10.dp)) {
