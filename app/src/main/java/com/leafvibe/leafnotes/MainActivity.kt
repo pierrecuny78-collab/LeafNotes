@@ -362,6 +362,7 @@ private fun LeafNotesApp() {
                     saveCategories(updatedCategories)
                     saveNotes(notes.map { if (it.category == target.name) it.copy(category = destination) else it })
                     if (parent == target.name) parent = target.parent
+                    if (selected == target.name) selected = "Tous"
                     categoryToDelete = null
                 }) { Text("Supprimer") }
             },
