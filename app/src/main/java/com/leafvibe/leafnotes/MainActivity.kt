@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -103,6 +104,7 @@ private fun LeafNotesApp() {
     var showLearning by remember { mutableStateOf(false) }
     var showQuiz by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var reminderTarget by remember { mutableStateOf<Note?>(null) }
     var permissionPending by remember { mutableStateOf<Note?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -193,6 +195,7 @@ private fun LeafNotesApp() {
                         darkTheme = !darkTheme
                         prefs.edit().putBoolean("dark", darkTheme).apply()
                     }) { Icon(Icons.Default.DarkMode, contentDescription = "Changer le thème") }
+                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Paramètres et aide") }
                 }
                 Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
@@ -295,6 +298,7 @@ private fun LeafNotesApp() {
         showEditor = false
     }
     if (showCategoryManager) CategoryManagerDialog(categories) { showCategoryManager = false }
+    if (showSettings) LeafSettingsDialog(darkTheme, { darkTheme = !darkTheme; prefs.edit().putBoolean("dark", darkTheme).apply() }, { showSettings = false; showBackup = true }, { showSettings = false })
     if (showGraph) LeafGraphDialog(notes, onOpen = { note -> editing = note; showEditor = true; showGraph = false }) { showGraph = false }
     if (showSwipe) LeafSwipeDialog(notes, onOpen = { note -> editing = note; showEditor = true; showSwipe = false }) { showSwipe = false }
     if (showLearning) LeafLearningDialog(notes) { showLearning = false }
@@ -631,4 +635,18 @@ private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Lon
         .addTag("leafnotes-reminder-" + note.id)
         .build()
     WorkManager.getInstance(context).enqueue(request)
+}
+
+@Composable
+private fun LeafSettingsDialog(darkTheme: Boolean, onToggleTheme: () -> Unit, onBackup: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Paramètres LeafNotes") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Personnalise ton espace et retrouve les outils principaux.")
+            OutlinedButton(onClick = onToggleTheme, modifier = Modifier.fillMaxWidth()) { Text(if (darkTheme) "Passer au thème clair" else "Passer au thème sombre") }
+            OutlinedButton(onClick = onBackup, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir LeafBackup") }
+            Text("LeafGraph : filtre une catégorie pour isoler son graphe. Pince pour zoomer, fais glisser pour déplacer, puis choisis le fond et la forme des nœuds.", style = MaterialTheme.typography.bodySmall)
+            Text("LeafSwipe : révise en cartes. LeafLearning : reformule avant de révéler. LeafQuiz : teste ta mémorisation.", style = MaterialTheme.typography.bodySmall)
+            Text("IA hybride et synchronisation automatique : prévues dans la feuille de route, pas encore activées dans cette version.", style = MaterialTheme.typography.bodySmall)
+        }
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } })
 }
