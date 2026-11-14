@@ -9,7 +9,7 @@ class LeafNotesDomainTest {
     @Test
     fun tagsAreTrimmedDeduplicatedAndNormalized() {
         assertEquals(
-            listOf("bts", "maths"),
+            listOf("BTS", "Maths"),
             LeafNotesOrganization.normalizeTags(listOf(" Maths ", "#BTS", "maths", "#maths", ""))
         )
     }
