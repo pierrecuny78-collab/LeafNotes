@@ -16,12 +16,18 @@ class LeafNotesDomainTest {
 
     @Test
     fun searchIncludesTitleBodyCategoryAndTags() {
-        val note = Note(id = "1", title = "Matrices", body = "Algèbre linéaire", category = "Cours")
+        val note = Note(id = "1", title = "Matrices", body = "Algèbre linéaire", category = "Cours", tags = listOf("BTS", "révision"))
         assertTrue(LeafNotesOrganization.searchMatches(note, "matrices"))
         assertTrue(LeafNotesOrganization.searchMatches(note, "algèbre"))
         assertTrue(LeafNotesOrganization.searchMatches(note, "cours"))
-        assertTrue(LeafNotesOrganization.searchMatches(note, "BTS", listOf("BTS")))
+        assertTrue(LeafNotesOrganization.searchMatches(note, "BTS", note.tags))
+        assertTrue(LeafNotesOrganization.searchMatches(note, "révision", note.tags))
         assertFalse(LeafNotesOrganization.searchMatches(note, "physique"))
+    }
+
+    @Test
+    fun tagsAreNormalizedAndCaseInsensitiveWithoutDuplicates() {
+        assertEquals(listOf("BTS", "Maths"), LeafNotesOrganization.normalizeTags(listOf(" Maths ", "#BTS", "maths", "#maths", "")))
     }
 
     @Test
