@@ -57,7 +57,8 @@ internal object LeafNotesOrganization {
         return note.title.contains(q, ignoreCase = true) ||
             note.body.contains(q, ignoreCase = true) ||
             note.category.contains(q, ignoreCase = true) ||
-            tags.any { it.contains(q, ignoreCase = true) }
+            tags.any { it.contains(q, ignoreCase = true) } ||
+            note.checklist.any { it.text.contains(q, ignoreCase = true) }
     }
 
     fun moveNote(note: Note, destinationCategory: String): Note =
