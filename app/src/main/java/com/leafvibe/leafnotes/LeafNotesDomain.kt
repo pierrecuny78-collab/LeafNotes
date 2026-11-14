@@ -13,6 +13,26 @@ internal data class ChecklistItem(
     val position: Int = 0
 )
 
+internal data class Flashcard(
+    val id: String = UUID.randomUUID().toString(),
+    val question: String,
+    val answer: String,
+    val dueAt: Long = 0L,
+    val intervalDays: Int = 0,
+    val repetitions: Int = 0
+)
+
+internal object LeafQuizScheduling {
+    private val intervals = listOf(1, 3, 7, 14, 30)
+
+    fun review(card: Flashcard, remembered: Boolean, now: Long = System.currentTimeMillis()): Flashcard =
+        if (!remembered) card.copy(dueAt = now + 10 * 60 * 1000L, intervalDays = 0, repetitions = 0)
+        else {
+            val next = intervals.getOrElse(card.repetitions.coerceAtLeast(0)) { 30 }
+            card.copy(dueAt = now + next * 24 * 60 * 60 * 1000L, intervalDays = next, repetitions = card.repetitions + 1)
+        }
+}
+
 internal data class NoteAttachment(
     val id: String = UUID.randomUUID().toString(),
     val uri: String,
