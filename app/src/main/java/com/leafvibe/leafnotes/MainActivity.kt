@@ -59,7 +59,7 @@ data class Note(
     val updatedAt: Long = System.currentTimeMillis(),
     val reminderAt: Long = 0L
 )
-private data class NoteCategory(val name: String, val emoji: String, val color: Long)
+private data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String = "")
 
 private val Oasis = Color(0xFF206B4D)
 private val Walnut = Color(0xFF6B4935)
@@ -128,7 +128,7 @@ private fun LeafNotesApp() {
         categories = merged
         prefs.edit().putString("categories", JSONArray().apply {
             merged.forEach { c -> put(JSONObject().apply {
-                put("name", c.name); put("emoji", c.emoji); put("color", c.color)
+                put("name", c.name); put("emoji", c.emoji); put("color", c.color); put("parent", c.parent)
             }) }
         }.toString()).apply()
     }
@@ -411,7 +411,7 @@ private fun loadCategories(prefs: android.content.SharedPreferences): List<NoteC
     val array = JSONArray(raw)
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
-        NoteCategory(o.getString("name"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
+        NoteCategory(o.getString("name"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80), o.optString("parent", ""))
     }
 }.getOrDefault(starterCategories)
 
@@ -602,7 +602,7 @@ private fun parseBackupNotes(array: JSONArray): List<Note> = (0 until array.leng
 
 private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 until array.length()).map { i ->
     val o = array.getJSONObject(i)
-    NoteCategory(o.optString("name", "Dossier"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80))
+    NoteCategory(o.optString("name", "Dossier"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80), o.optString("parent", ""))
 }.distinctBy { it.name.lowercase() }.filter { it.name.isNotBlank() }
 
 
