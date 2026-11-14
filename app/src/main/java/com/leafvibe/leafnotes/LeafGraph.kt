@@ -134,7 +134,7 @@ internal fun LeafGraphScreen(
 @Composable
 private fun GraphGroupCard(group: GraphGroup, onOpenNote: (Note) -> Unit) {
     val category = group.category
-    val nodeColor = category?.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    val nodeColor = category?.color?.let { Color(it.toInt()) } ?: MaterialTheme.colorScheme.primary
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = nodeColor.copy(alpha = 0.12f))
