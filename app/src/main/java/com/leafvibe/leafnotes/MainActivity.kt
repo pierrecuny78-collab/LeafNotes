@@ -3,6 +3,8 @@ package com.leafvibe.leafnotes
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,6 +32,7 @@ import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
+import android.widget.Toast
 
 internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis())
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
@@ -49,8 +52,12 @@ class MainActivity : ComponentActivity() {
 private fun LeafNotesApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("leafnotes", Context.MODE_PRIVATE) }
-    var notes by remember { mutableStateOf(loadNotes(prefs)) }
-    var categories by remember { mutableStateOf(loadCategories(prefs)) }
+    val store = remember { LeafNotesStore(prefs) }
+    var notes by remember { mutableStateOf(store.loadNotes()) }
+    var categories by remember { mutableStateOf(store.loadCategories(starterCategories)) }
+    var trash by remember { mutableStateOf(store.loadTrash()) }
+    var toolsDialog by remember { mutableStateOf(false) }
+    var trashDialog by remember { mutableStateOf(false) }
     var dark by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
     var selected by remember { mutableStateOf("Tous") }
     var query by remember { mutableStateOf("") }
@@ -66,17 +73,48 @@ private fun LeafNotesApp() {
     var emoji by remember { mutableStateOf("📁") }
 
     fun saveNotes(v: List<Note>) {
+        store.saveNotes(v)
         notes = v
-        prefs.edit().putString("notes", JSONArray().apply { v.forEach { n -> put(JSONObject().apply {
-            put("id", n.id); put("title", n.title); put("body", n.body); put("category", n.category)
-            put("favorite", n.favorite); put("updatedAt", n.updatedAt)
-        }) } }.toString()).apply()
     }
     fun saveCategories(v: List<NoteCategory>) {
+        store.saveCategories(v)
         categories = v
-        prefs.edit().putString("categories", JSONArray().apply { v.forEach { c -> put(JSONObject().apply {
-            put("name", c.name); put("emoji", c.emoji); put("color", c.color); if (c.parent != null) put("parent", c.parent)
-        }) } }.toString()).apply()
+    }
+    fun saveTrash(v: List<TrashedNote>) {
+        store.saveTrash(v)
+        trash = v
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use {
+                    it.write(LeafNotesTransfer.encode(notes, categories))
+                } ?: error("Impossible d'ouvrir le fichier de destination.")
+            }
+            Toast.makeText(context, if (result.isSuccess) "Sauvegarde exportée." else "Échec de l'export.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("Impossible de lire le fichier sélectionné.")
+                val archive = LeafNotesTransfer.decode(bytes)
+                val merged = LeafNotesTransfer.merge(notes, categories, archive)
+                saveNotes(merged.notes)
+                saveCategories(merged.categories)
+                merged
+            }
+            Toast.makeText(context, result.fold(
+                { "Import terminé : " + it.addedNotes + " note(s), " + it.addedCategories + " catégorie(s), " + it.skippedNotes + " doublon(s) ignoré(s)." },
+                { "Import impossible : " + (it.message ?: "erreur inconnue") }
+            ), Toast.LENGTH_LONG).show()
+        }
     }
 
     val visible = notes.filter { n ->
@@ -151,6 +189,7 @@ private fun LeafNotesApp() {
                             Icon(Icons.Default.Folder, null); Text("Catégories")
                         }
                         TextButton(onClick = { graphOpen = true }) { Text("🕸️ Graph") }
+                        TextButton(onClick = { toolsDialog = true }) { Text("Outils") }
                         IconButton(onClick = { dark = !dark; prefs.edit().putBoolean("dark", dark).apply() }) { Text(if (dark) "☀️" else "🌙") }
                     }
                     OutlinedTextField(query, { query = it; page = 0 }, Modifier.fillMaxWidth(), singleLine = true,
@@ -175,7 +214,11 @@ private fun LeafNotesApp() {
                                         IconButton(onClick = { saveNotes(notes.map { if (it.id == n.id) it.copy(favorite = !it.favorite) else it }) }) {
                                             Icon(if (n.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, tint = if (n.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                        IconButton(onClick = { saveNotes(notes.filterNot { it.id == n.id }) }) { Icon(Icons.Default.Delete, null) }
+                                        IconButton(onClick = {
+                                            val moved = LeafNotesTrash.moveToTrash(notes, trash, n.id)
+                                            saveNotes(moved.first)
+                                            saveTrash(moved.second)
+                                        }) { Icon(Icons.Default.Delete, contentDescription = "Mettre à la corbeille") }
                                     }
                                     Text(n.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(n.category + " • " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.updatedAt)),
@@ -214,6 +257,61 @@ private fun LeafNotesApp() {
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
     }
 
+    if (toolsDialog) AlertDialog(
+        onDismissRequest = { toolsDialog = false },
+        title = { Text("Outils et sauvegardes") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Tes données restent stockées localement sur cet appareil.")
+                Button(onClick = {
+                    toolsDialog = false
+                    exportLauncher.launch("LeafNotes-" + System.currentTimeMillis() + ".leafnotes")
+                }, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
+                OutlinedButton(onClick = {
+                    toolsDialog = false
+                    importLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                }, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde") }
+                OutlinedButton(onClick = {
+                    toolsDialog = false
+                    trashDialog = true
+                }, modifier = Modifier.fillMaxWidth()) { Text("Corbeille (" + trash.size + ")") }
+            }
+        },
+        confirmButton = { TextButton(onClick = { toolsDialog = false }) { Text("Fermer") } }
+    )
+
+    if (trashDialog) AlertDialog(
+        onDismissRequest = { trashDialog = false },
+        title = { Text("Corbeille") },
+        text = {
+            if (trash.isEmpty()) Text("La corbeille est vide.")
+            else LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(trash, key = { it.note.id }) { entry ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(entry.note.title.ifBlank { "Sans titre" }, fontWeight = FontWeight.SemiBold)
+                            Text(entry.note.category, style = MaterialTheme.typography.bodySmall)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = {
+                                    val restored = LeafNotesTrash.restore(trash, entry.note.id, notes)
+                                    saveNotes(restored.first)
+                                    saveTrash(restored.second)
+                                }) { Text("Restaurer") }
+                                TextButton(onClick = {
+                                    saveTrash(LeafNotesTrash.permanentlyDelete(trash, entry.note.id))
+                                }) { Text("Supprimer définitivement") }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { trashDialog = false }) { Text("Fermer") } },
+        dismissButton = {
+            if (trash.isNotEmpty()) TextButton(onClick = { saveTrash(emptyList()) }) { Text("Vider la corbeille") }
+        }
+    )
+
     if (categoryEditor) AlertDialog(onDismissRequest = { categoryEditor = false }, title = { Text(if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Nom") }, singleLine = true)
@@ -229,13 +327,3 @@ private fun LeafNotesApp() {
         dismissButton = { TextButton(onClick = { categoryEditor = false }) { Text("Annuler") } })
 }
 
-private fun loadNotes(prefs: android.content.SharedPreferences): List<Note> = runCatching {
-    val a = JSONArray(prefs.getString("notes", "[]"))
-    (0 until a.length()).map { i -> val o = a.getJSONObject(i); Note(o.optString("id"), o.optString("title"), o.optString("body"), o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt")) }
-}.getOrDefault(emptyList())
-
-private fun loadCategories(prefs: android.content.SharedPreferences): List<NoteCategory> = runCatching {
-    val raw = prefs.getString("categories", null) ?: return@runCatching starterCategories
-    val a = JSONArray(raw)
-    (0 until a.length()).map { i -> val o = a.getJSONObject(i); NoteCategory(o.getString("name"), o.optString("emoji", "📁"), o.optLong("color", 0xFF6C9B80), o.optString("parent").takeIf { it.isNotBlank() }) }
-}.getOrDefault(starterCategories)
