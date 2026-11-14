@@ -134,6 +134,17 @@ private fun LeafNotesApp() {
         }.toString()).apply()
     }
 
+    // Exact save is reserved for an explicit, confirmed category deletion/move.
+    fun saveCategoriesExact(value: List<NoteCategory>) {
+        val safe = value.distinctBy { it.name.trim().lowercase() }
+        categories = safe
+        prefs.edit().putString("categories", JSONArray().apply {
+            safe.forEach { c -> put(JSONObject().apply {
+                put("name", c.name); put("emoji", c.emoji); put("color", c.color); put("parent", c.parent)
+            }) }
+        }.toString()).apply()
+    }
+
     val backupExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.openOutputStream(uri)?.use { it.write(buildBackupJson(notes, categories).toByteArray(Charsets.UTF_8)) }
@@ -298,7 +309,13 @@ private fun LeafNotesApp() {
         saveNotes(changed)
         showEditor = false
     }
-    if (showCategoryManager) CategoryManagerDialog(categories) { showCategoryManager = false }
+    if (showCategoryManager) CategoryManagerDialog(
+        categories = categories,
+        notes = notes,
+        onSaveCategories = { saveCategoriesExact(it) },
+        onSaveNotes = { saveNotes(it) },
+        onDismiss = { showCategoryManager = false }
+    )
     if (showSettings) LeafSettingsDialog(darkTheme, { darkTheme = !darkTheme; prefs.edit().putBoolean("dark", darkTheme).apply() }, { showSettings = false; showBackup = true }, { showSettings = false })
     if (showGraph) LeafGraphDialog(notes, onOpen = { note -> editing = note; showEditor = true; showGraph = false }) { showGraph = false }
     if (showSwipe) LeafSwipeDialog(notes, onOpen = { note -> editing = note; showEditor = true; showSwipe = false }) { showSwipe = false }
@@ -424,20 +441,58 @@ private fun loadCategories(prefs: android.content.SharedPreferences): List<NoteC
 
 
 @Composable
-private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () -> Unit) {
+private fun CategoryManagerDialog(
+    categories: List<NoteCategory>,
+    notes: List<Note>,
+    onSaveCategories: (List<NoteCategory>) -> Unit,
+    onSaveNotes: (List<Note>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var deleting by remember { mutableStateOf<NoteCategory?>(null) }
+    var moveTarget by remember { mutableStateOf("") }
+    val selected = deleting
+    val descendants = remember(categories, selected) {
+        if (selected == null) emptySet() else buildSet {
+            val queue = ArrayDeque<String>()
+            queue.add(selected.name)
+            while (queue.isNotEmpty()) {
+                val parent = queue.removeFirst()
+                categories.filter { it.parent == parent }.forEach {
+                    if (add(it.name)) queue.add(it.name)
+                }
+            }
+        }
+    }
+    val destinations = categories.filter { it.name !in descendants }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Catégories et dossiers protégés") },
+        title = { Text("Gérer les catégories et dossiers") },
         text = {
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Aucune catégorie ne sera supprimée. Les catégories déjà présentes et celles que tu créeras resteront dans ta bibliothèque, même après une restauration de sauvegarde.",
-                    style = MaterialTheme.typography.bodySmall)
-                categories.forEach { category ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(category.emoji + " " + category.name, Modifier.weight(1f))
-                        Text("Conservée", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary)
+            Column(
+                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Les dossiers peuvent être supprimés après confirmation. Si un dossier contient des notes ou des sous-dossiers, déplace-les vers une autre catégorie : aucun contenu ne sera effacé.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                categories.sortedWith(compareBy<NoteCategory> { it.parent }.thenBy { it.name }).forEach { category ->
+                    val depth = generateSequence(category) { current ->
+                        categories.firstOrNull { it.name == current.parent }
+                    }.count().minus(1).coerceAtLeast(0)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "  ".repeat(depth) + category.emoji + " " + category.name,
+                            Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            deleting = category
+                            moveTarget = category.parent.takeIf { parent -> categories.any { it.name == parent } }
+                                ?: categories.firstOrNull { it.name != category.name && it.name !in descendants }?.name.orEmpty()
+                        }) { Text("Supprimer") }
                     }
                     HorizontalDivider()
                 }
@@ -445,6 +500,62 @@ private fun CategoryManagerDialog(categories: List<NoteCategory>, onDismiss: () 
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
     )
+
+    if (selected != null) {
+        val directChildren = categories.filter { it.parent == selected.name }
+        val noteCount = notes.count { it.category == selected.name }
+        val hasContent = directChildren.isNotEmpty() || noteCount > 0
+        val validTargets = categories.filter { it.name !in descendants }
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Supprimer « ${selected.name} » ?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (hasContent) {
+                            "Ce dossier contient $noteCount note(s) et ${directChildren.size} sous-dossier(s). Choisis où déplacer les notes et rattacher les sous-dossiers avant la suppression."
+                        } else {
+                            "Ce dossier est vide. Tu peux le supprimer sans toucher aux autres données."
+                        }
+                    )
+                    if (hasContent) {
+                        Text("Destination :", style = MaterialTheme.typography.labelLarge)
+                        validTargets.forEach { target ->
+                            FilterChip(
+                                selected = moveTarget == target.name,
+                                onClick = { moveTarget = target.name },
+                                label = { Text(target.emoji + " " + target.name) }
+                            )
+                        }
+                        if (validTargets.isEmpty()) {
+                            Text("Crée d’abord une autre catégorie pour déplacer le contenu.", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !hasContent || validTargets.any { it.name == moveTarget },
+                    onClick = {
+                        val remaining = categories.filterNot { it.name == selected.name }.map { category ->
+                            if (category.parent == selected.name) category.copy(parent = moveTarget) else category
+                        }
+                        if (hasContent) {
+                            onSaveNotes(notes.map { note ->
+                                if (note.category == selected.name) note.copy(category = moveTarget, updatedAt = System.currentTimeMillis())
+                                else note
+                            })
+                        }
+                        onSaveCategories(remaining)
+                        deleting = null
+                    }
+                ) { Text("Déplacer et supprimer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text("Annuler") }
+            }
+        )
+    }
 }
 
 @Composable
