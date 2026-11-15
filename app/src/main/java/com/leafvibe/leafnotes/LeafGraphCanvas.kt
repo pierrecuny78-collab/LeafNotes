@@ -1,6 +1,10 @@
 package com.leafvibe.leafnotes
 
 import android.graphics.Paint
+import android.graphics.BitmapFactory
+import android.graphics.Path
+import android.graphics.RectF
+import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -90,6 +94,17 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
             }
         }
         result
+    }
+    val imageBitmaps = remember(points) {
+        points.mapNotNull { point ->
+            val attachment = point.note.attachments.firstOrNull { it.mimeType.startsWith("image/") }
+            val bitmap = attachment?.let {
+                runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(it.uri))?.use { stream -> BitmapFactory.decodeStream(stream) }
+                }.getOrNull()
+            }
+            if (bitmap == null) null else point.note.id to bitmap
+        }.toMap()
     }
     val byTitle = remember(points) { points.associateBy { it.note.title.trim().lowercase() } }
     val links = remember(points) {
@@ -240,7 +255,16 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
                                 else -> native.drawCircle(p.x, p.y, radius, nodePaint)
                             }
                             textPaint.textSize = (24f * zoom).coerceIn(12f, 40f)
-                            native.drawText(point.note.icon, p.x, p.y + 8f, textPaint)
+                            val iconBitmap = imageBitmaps[point.note.id]
+                            if (iconBitmap != null) {
+                                val save = native.save()
+                                val clip = Path().apply { addCircle(p.x, p.y, radius, Path.Direction.CW) }
+                                native.clipPath(clip)
+                                native.drawBitmap(iconBitmap, null, RectF(p.x - radius, p.y - radius, p.x + radius, p.y + radius), null)
+                                native.restoreToCount(save)
+                            } else {
+                                native.drawText(point.note.icon, p.x, p.y + 8f, textPaint)
+                            }
                             textPaint.textSize = (22f * zoom).coerceIn(11f, 36f)
                             val label = point.note.title.ifBlank { "Sans titre" }.take(24)
                             native.drawText(label, p.x, p.y + radius + 24f, textPaint)
