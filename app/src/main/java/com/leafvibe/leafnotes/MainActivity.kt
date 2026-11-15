@@ -40,7 +40,7 @@ import java.util.Date
 import java.util.UUID
 import android.widget.Toast
 
-internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList())
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝")
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
@@ -238,6 +238,7 @@ private fun LeafNotesApp() {
                             Card(Modifier.fillMaxWidth().clickable { editing = n; editor = true }) {
                                 Column(Modifier.padding(12.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(n.icon, modifier = Modifier.padding(end = 6.dp))
                                         Text(n.title.ifBlank { "Sans titre" }, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                                         IconButton(onClick = { saveNotes(notes.map { if (it.id == n.id) it.copy(favorite = !it.favorite) else it }) }) {
                                             Icon(if (n.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, tint = if (n.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -274,9 +275,11 @@ private fun LeafNotesApp() {
         var flashcards by remember(editing) { mutableStateOf(editing?.flashcards ?: emptyList()) }
         var questionDraft by remember(editing) { mutableStateOf("") }
         var answerDraft by remember(editing) { mutableStateOf("") }
+        var noteIcon by remember(editing) { mutableStateOf(editing?.icon ?: "📝") }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
             text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(noteIcon, { noteIcon = it }, label = { Text("Icône / emoji de la note") }, singleLine = true)
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") })
                 OutlinedTextField(body, { body = it }, label = { Text("Contenu") }, minLines = 4)
                 OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Étiquettes (séparées par des virgules)") }, singleLine = true)
@@ -321,8 +324,8 @@ private fun LeafNotesApp() {
             confirmButton = { TextButton(onClick = {
                 val old = editing
                 val tags = LeafNotesOrganization.normalizeTags(tagsText.split(","))
-                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards)
-                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, updatedAt = System.currentTimeMillis()) else it })
+                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" })
+                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" }, updatedAt = System.currentTimeMillis()) else it })
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
