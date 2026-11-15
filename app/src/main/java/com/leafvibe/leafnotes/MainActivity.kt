@@ -183,8 +183,19 @@ private fun LeafNotesApp() {
     ) { uri ->
         if (uri != null) {
             val result = runCatching {
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: error("Impossible de lire le fichier sélectionné.")
+                val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= 50 * 1024 * 1024) { "Sauvegarde supérieure à 50 Mo." }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: error("Impossible de lire le fichier sélectionné.")
                 val archive = LeafNotesTransfer.decode(bytes)
                 val merged = LeafNotesTransfer.merge(notes, categories, archive, trash, templates)
                 saveNotes(merged.notes)
