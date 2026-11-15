@@ -5,6 +5,9 @@ import android.os.Bundle
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import java.util.Calendar
 import androidx.core.content.ContextCompat
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -161,6 +164,7 @@ private fun LeafNotesApp() {
                 saveNotes(merged.notes)
                 saveCategories(merged.categories)
                 saveTrash(merged.trash)
+                merged.notes.filter { it.reminderAt > System.currentTimeMillis() }.forEach { scheduleNoteReminderAt(context, it, it.reminderAt) }
                 merged
             }
             Toast.makeText(context, result.fold(
@@ -297,6 +301,7 @@ private fun LeafNotesApp() {
                                             Icon(if (n.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, tint = if (n.favorite) Color(0xFFE45B72) else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                         IconButton(onClick = {
+                                            WorkManager.getInstance(context).cancelUniqueWork("leafnotes-reminder-" + n.id)
                                             val moved = LeafNotesTrash.moveToTrash(notes, trash, n.id)
                                             saveNotes(moved.first)
                                             saveTrash(moved.second)
@@ -422,6 +427,11 @@ private fun LeafNotesApp() {
 
     if (reminderTarget != null) {
         val target = reminderTarget!!
+        fun applyReminder(triggerAt: Long) {
+            scheduleNoteReminderAt(context, target, triggerAt)
+            saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = triggerAt) else it })
+            reminderTarget = null
+        }
         AlertDialog(
             onDismissRequest = { reminderTarget = null },
             title = { Text("Rappel pour " + target.title.ifBlank { "cette note" }) },
@@ -429,23 +439,33 @@ private fun LeafNotesApp() {
             confirmButton = {
                 Column {
                     TextButton(onClick = {
-                        scheduleNoteReminder(context, target, 10L)
-                        val at = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10L)
-                        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = at) else it })
-                        reminderTarget = null
+                        applyReminder(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10L))
                     }) { Text("Dans 10 minutes") }
                     TextButton(onClick = {
-                        scheduleNoteReminder(context, target, 60L)
-                        val at = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(60L)
-                        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = at) else it })
-                        reminderTarget = null
+                        applyReminder(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(60L))
                     }) { Text("Dans 1 heure") }
                     TextButton(onClick = {
-                        scheduleNoteReminder(context, target, 1440L)
-                        val at = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1440L)
-                        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = at) else it })
-                        reminderTarget = null
+                        applyReminder(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1440L))
                     }) { Text("Demain") }
+                    TextButton(onClick = {
+                        val now = Calendar.getInstance()
+                        DatePickerDialog(context, { _, year, month, day ->
+                            val chosen = Calendar.getInstance().apply {
+                                set(Calendar.YEAR, year)
+                                set(Calendar.MONTH, month)
+                                set(Calendar.DAY_OF_MONTH, day)
+                            }
+                            TimePickerDialog(context, { _, hour, minute ->
+                                chosen.set(Calendar.HOUR_OF_DAY, hour)
+                                chosen.set(Calendar.MINUTE, minute)
+                                chosen.set(Calendar.SECOND, 0)
+                                chosen.set(Calendar.MILLISECOND, 0)
+                                if (chosen.timeInMillis <= System.currentTimeMillis()) {
+                                    Toast.makeText(context, "Choisis une date future.", Toast.LENGTH_SHORT).show()
+                                } else applyReminder(chosen.timeInMillis)
+                            }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), true).show()
+                        }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
+                    }) { Text("Choisir date et heure…") }
                 }
             },
             dismissButton = { TextButton(onClick = { reminderTarget = null }) { Text("Annuler") } }
@@ -560,7 +580,7 @@ private fun LeafNotesApp() {
 }
 
 
-private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Long) {
+private fun scheduleNoteReminderAt(context: Context, note: Note, triggerAt: Long) {
     val input = Data.Builder()
         .putString("note_title", note.title.ifBlank { "Rappel LeafNotes" })
         .putString("note_body", note.body.take(240))
@@ -568,7 +588,7 @@ private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Lon
         .build()
     val request = OneTimeWorkRequestBuilder<LeafNoteReminderWorker>()
         .setInputData(input)
-        .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+        .setInitialDelay((triggerAt - System.currentTimeMillis()).coerceAtLeast(0L), TimeUnit.MILLISECONDS)
         .addTag("leafnotes-reminder-" + note.id)
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(
