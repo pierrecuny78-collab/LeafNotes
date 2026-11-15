@@ -43,6 +43,23 @@ class LeafNotesDomainTest {
     }
 
     @Test
+    fun exportTextContainsTagsChecklistAndQuizContent() {
+        val note = Note(
+            id = "export",
+            title = "Révisions",
+            body = "Contenu",
+            category = "Cours",
+            tags = listOf("BTS"),
+            checklist = listOf(ChecklistItem(id = "task", text = "Apprendre", checked = true)),
+            flashcards = listOf(Flashcard(id = "card", question = "Question ?", answer = "Réponse"))
+        )
+        val exported = String(LeafNotesTransfer.exportText(listOf(note)), Charsets.UTF_8)
+        assertTrue(exported.contains("Tags : BTS"))
+        assertTrue(exported.contains("[x] Apprendre"))
+        assertTrue(exported.contains("Q: Question ?"))
+    }
+
+    @Test
     fun categoryMoveRejectsSelfParentAndCycles() {
         val categories = listOf(
             NoteCategory("Cours", "📚", 1L),
