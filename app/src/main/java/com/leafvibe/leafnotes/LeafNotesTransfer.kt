@@ -191,8 +191,20 @@ internal object LeafNotesTransfer {
                 appendLine(note.title.ifBlank { "Sans titre" })
                 appendLine("Catégorie : ${note.category}")
                 appendLine("Modifiée : ${note.updatedAt}")
+                appendLine("Icône : ${note.icon}")
+                if (note.tags.isNotEmpty()) appendLine("Tags : ${note.tags.joinToString(", ")}")
                 appendLine()
                 append(note.body)
+                if (note.checklist.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Liste à cocher :")
+                    note.checklist.forEach { appendLine((if (it.checked) "[x] " else "[ ] ") + it.text) }
+                }
+                if (note.flashcards.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Questions / réponses :")
+                    note.flashcards.forEach { appendLine("Q: " + it.question); appendLine("R: " + it.answer) }
+                }
             }
         }
         return text.toByteArray(StandardCharsets.UTF_8)
