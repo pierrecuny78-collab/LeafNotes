@@ -43,7 +43,8 @@ internal object LeafNotesTransfer {
                         .put("favorite", note.favorite)
                         .put("updatedAt", note.updatedAt)
                         .put("tags", JSONArray(note.tags))
-                        .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } }))
+                        .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
+                        .put("flashcards", note.flashcards.toJson()))
                 }
             })
             .put("categories", JSONArray().apply {
@@ -77,7 +78,8 @@ internal object LeafNotesTransfer {
                 favorite = item.optBoolean("favorite", false),
                 updatedAt = item.optLong("updatedAt", 0L),
                 tags = item.optJSONArray("tags").toStringList(),
-                checklist = item.optJSONArray("checklist").toChecklist()
+                checklist = item.optJSONArray("checklist").toChecklist(),
+                flashcards = item.optJSONArray("flashcards").toFlashcards()
             )
         }
 
@@ -185,6 +187,30 @@ private fun JSONArray?.toChecklist(): List<ChecklistItem> {
             text = text,
             checked = item.optBoolean("checked", false),
             position = item.optInt("position", index)
+        )
+    }
+}
+
+private fun List<Flashcard>.toJson(): JSONArray = JSONArray().apply {
+    forEach { card ->
+        put(JSONObject().put("id", card.id).put("question", card.question).put("answer", card.answer)
+            .put("dueAt", card.dueAt).put("intervalDays", card.intervalDays).put("repetitions", card.repetitions))
+    }
+}
+
+private fun JSONArray?.toFlashcards(): List<Flashcard> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index ->
+        val item = optJSONObject(index) ?: return@mapNotNull null
+        val question = item.optString("question").trim()
+        val answer = item.optString("answer").trim()
+        if (question.isBlank() || answer.isBlank()) null else Flashcard(
+            id = item.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+            question = question,
+            answer = answer,
+            dueAt = item.optLong("dueAt", 0L),
+            intervalDays = item.optInt("intervalDays", 0),
+            repetitions = item.optInt("repetitions", 0)
         )
     }
 }
