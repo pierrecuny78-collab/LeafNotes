@@ -79,6 +79,28 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
         preferences.edit().putString(KEY_CATEGORIES, array.toString()).apply()
     }
 
+
+    fun loadTemplates(): List<NoteTemplate> = runCatching {
+        val array = JSONArray(preferences.getString(KEY_TEMPLATES, "[]"))
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id").ifBlank { return@mapNotNull null }
+            val name = item.optString("name").trim()
+            if (name.isBlank()) return@mapNotNull null
+            NoteTemplate(id, name, item.optString("title"), item.optString("body"), item.optString("category").takeIf { it.isNotBlank() && it != "null" })
+        }
+    }.getOrDefault(emptyList())
+
+    fun saveTemplates(templates: List<NoteTemplate>) {
+        val array = JSONArray()
+        templates.forEach { template ->
+            array.put(JSONObject().put("id", template.id).put("name", template.name)
+                .put("title", template.title).put("body", template.body)
+                .put("category", template.category ?: JSONObject.NULL))
+        }
+        preferences.edit().putString(KEY_TEMPLATES, array.toString()).apply()
+    }
+
     fun loadTrash(): List<TrashedNote> = runCatching {
         val array = JSONArray(preferences.getString(KEY_TRASH, "[]"))
         (0 until array.length()).mapNotNull { index ->
@@ -132,6 +154,7 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
         private const val KEY_NOTES = "notes"
         private const val KEY_CATEGORIES = "categories"
         private const val KEY_TRASH = "trash"
+        private const val KEY_TEMPLATES = "templates"
     }
 }
 
