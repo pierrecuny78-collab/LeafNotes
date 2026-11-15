@@ -159,6 +159,14 @@ private fun LeafNotesApp() {
             }, floatingActionButton = { FloatingActionButton(onClick = { categoryEditor = true }) { Icon(Icons.Default.Add, contentDescription = "Ajouter une catégorie") } }) { pad ->
                 Column(Modifier.fillMaxSize().padding(pad).padding(16.dp)) {
                     Text("Dossiers et sous-dossiers • " + children.size + " éléments", style = MaterialTheme.typography.titleMedium)
+                    parent?.let { folder ->
+                        val directNotes = notes.count { it.category == folder }
+                        if (directNotes > 0) {
+                            OutlinedButton(onClick = { selected = folder; page = 0; categoryLibrary = false }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Voir les notes de ce dossier ($directNotes)")
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     if (shown.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("Aucun dossier ici. Appuie sur + pour en créer un.") }
                     else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
