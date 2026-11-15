@@ -473,6 +473,7 @@ private fun NoteEditorDialog(
     var mediaUris by remember(initial) { mutableStateOf(initial?.mediaUris ?: emptyList()) }
     var parentNoteId by remember(initial) { mutableStateOf(initial?.parentNoteId.orEmpty()) }
     var tagsText by remember(initial) { mutableStateOf(initial?.tags?.joinToString(", ").orEmpty()) }
+    var showHistory by remember(initial) { mutableStateOf(false) }
     val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -492,6 +493,9 @@ private fun NoteEditorDialog(
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") }, singleLine = true)
                 OutlinedTextField(body, { body = it }, label = { Text("Écris tes idées…") }, minLines = 5)
                 OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Tags (séparés par des virgules)") })
+                if (initial != null) OutlinedButton(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Historique des versions (" + initial.history.size + "/30)")
+                }
                 Text("Catégorie", style = MaterialTheme.typography.labelLarge)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(categories) { c ->
@@ -529,6 +533,36 @@ private fun NoteEditorDialog(
         },
         confirmButton = { TextButton(onClick = { onSave(title.trim(), body.trim(), category, iconUri, mediaUris, parentNoteId, tagsText.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct()) }) { Text("Enregistrer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } })
+    if (showHistory) {
+        AlertDialog(
+            onDismissRequest = { showHistory = false },
+            title = { Text("Historique des versions") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val versions = initial?.history.orEmpty().asReversed()
+                    if (versions.isEmpty()) Text("Aucune ancienne version enregistrée.")
+                    versions.forEachIndexed { index, raw ->
+                        val snapshot = runCatching { JSONObject(raw) }.getOrNull()
+                        TextButton(onClick = {
+                            if (snapshot != null) {
+                                title = snapshot.optString("title", title)
+                                body = snapshot.optString("body", body)
+                                category = snapshot.optString("category", category)
+                                iconUri = snapshot.optString("iconUri", iconUri)
+                                mediaUris = snapshot.optJSONArray("mediaUris")?.let { a ->
+                                    (0 until a.length()).map { a.optString(it) }
+                                } ?: mediaUris
+                            }
+                            showHistory = false
+                        }) {
+                            Text("Restaurer la version " + (versions.size - index) + " · " + (snapshot?.optString("title", "Sans titre") ?: "Version illisible"))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Fermer") } }
+        )
+    }
 }
 @Composable
 private fun CategoryEditorDialog(categories: List<NoteCategory>, initialParent: String, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
