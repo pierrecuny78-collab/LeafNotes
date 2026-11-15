@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import org.junit.Rule
 import org.junit.Test
 
@@ -28,6 +29,20 @@ class LeafNotesScreenTest {
         composeRule.onNodeWithText("Liste à cocher").assertIsDisplayed()
         composeRule.onNodeWithText("Nouvel élément").assertIsDisplayed()
         composeRule.onNodeWithText("Questions / réponses pour LeafQuiz").assertIsDisplayed()
+    }
+
+    @Test
+    fun editorCanSaveAndApplyReusableTemplates() {
+        composeRule.onNodeWithContentDescription("Nouvelle note").performClick()
+        composeRule.onNodeWithText("Titre").performTextInput("Compte rendu")
+        composeRule.onNodeWithText("Contenu").performTextInput("Ordre du jour")
+        composeRule.onNodeWithText("Enregistrer comme modèle").performClick()
+        composeRule.onNodeWithText("Annuler").performClick()
+        composeRule.onNodeWithContentDescription("Nouvelle note").performClick()
+        composeRule.onNodeWithText("Utiliser un modèle").performClick()
+        composeRule.onNodeWithText("Compte rendu").assertIsDisplayed()
+        composeRule.onNodeWithText("Appliquer ce modèle").performClick()
+        composeRule.onNodeWithText("Enregistrer").assertIsDisplayed()
     }
 
     @Test
