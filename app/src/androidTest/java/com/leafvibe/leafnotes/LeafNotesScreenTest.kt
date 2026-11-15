@@ -16,7 +16,9 @@ class LeafNotesScreenTest {
     fun homeScreenDisplaysLibraryAndPrimaryActions() {
         composeRule.onNodeWithText("LeafNotes").assertIsDisplayed()
         composeRule.onNodeWithText("Catégories").assertIsDisplayed()
-        composeRule.onNodeWithText("Outils").assertIsDisplayed()
+        composeRule.onNodeWithText("LeafBackup").assertIsDisplayed()
+        composeRule.onNodeWithText("LeafSwipe").assertIsDisplayed()
+        composeRule.onNodeWithText("LeafLearning").assertIsDisplayed()
     }
 
     @Test
@@ -36,8 +38,25 @@ class LeafNotesScreenTest {
     }
 
     @Test
+    fun swipeAndLearningModulesOpen() {
+        composeRule.onNodeWithText("LeafSwipe").performClick()
+        composeRule.onNodeWithText("LeafSwipe · Révision rapide").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Retour").performClick()
+        composeRule.onNodeWithText("LeafLearning").performClick()
+        composeRule.onNodeWithText("LeafLearning · Apprendre activement").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsPanelExplainsModulesAndOpensBackup() {
+        composeRule.onNodeWithContentDescription("Paramètres et aide").performClick()
+        composeRule.onNodeWithText("Paramètres et aide LeafNotes").assertIsDisplayed()
+        composeRule.onNodeWithText("Ouvrir LeafBackup").performClick()
+        composeRule.onNodeWithText("Outils et sauvegardes").assertIsDisplayed()
+    }
+
+    @Test
     fun toolsScreenExposesBackupImportAndTrash() {
-        composeRule.onNodeWithText("Outils").performClick()
+        composeRule.onNodeWithText("LeafBackup").performClick()
         composeRule.onNodeWithText("Outils et sauvegardes").assertIsDisplayed()
         composeRule.onNodeWithText("Exporter une sauvegarde").assertIsDisplayed()
         composeRule.onNodeWithText("Importer une sauvegarde").assertIsDisplayed()
