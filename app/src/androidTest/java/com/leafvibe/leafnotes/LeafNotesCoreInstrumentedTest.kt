@@ -22,11 +22,13 @@ class LeafNotesCoreInstrumentedTest {
         )
 
         val trashed = listOf(TrashedNote(notes.first(), deletedAt = 2222L))
-        val decoded = LeafNotesTransfer.decode(LeafNotesTransfer.encode(notes, categories, trashed))
+        val templates = listOf(NoteTemplate(id = "template-1", name = "Fiche de cours", title = "Titre", body = "Plan", category = "Cours"))
+        val decoded = LeafNotesTransfer.decode(LeafNotesTransfer.encode(notes, categories, trashed, templates))
 
         assertEquals(notes, decoded.notes)
         assertEquals(categories, decoded.categories)
         assertEquals(trashed, decoded.trash)
+        assertEquals(templates, decoded.templates)
     }
 
     @Test
@@ -109,11 +111,14 @@ class LeafNotesCoreInstrumentedTest {
         firstStore.saveNotes(listOf(note))
         firstStore.saveCategories(categories)
         firstStore.saveTrash(listOf(TrashedNote(note, deletedAt = 123L)))
+        val templates = listOf(NoteTemplate(id = "template-store", name = "Compte rendu", title = "Réunion", body = "Décisions", category = "Cours"))
+        firstStore.saveTemplates(templates)
 
         val reopenedStore = LeafNotesStore(preferences)
         assertEquals(listOf(note), reopenedStore.loadNotes())
         assertEquals(categories, reopenedStore.loadCategories(emptyList()))
         assertEquals(listOf(TrashedNote(note, deletedAt = 123L)), reopenedStore.loadTrash())
+        assertEquals(templates, reopenedStore.loadTemplates())
         preferences.edit().clear().commit()
     }
 
