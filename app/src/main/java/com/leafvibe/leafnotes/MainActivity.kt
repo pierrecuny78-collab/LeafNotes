@@ -2,6 +2,15 @@ package com.leafvibe.leafnotes
 
 import android.content.Context
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,7 +49,7 @@ import java.util.Date
 import java.util.UUID
 import android.widget.Toast
 
-internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝")
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝", val reminderAt: Long = 0L)
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
@@ -80,6 +89,14 @@ private fun LeafNotesApp() {
     var emoji by remember { mutableStateOf("📁") }
     var categoryColor by remember { mutableStateOf("#6C9B80") }
     var categoryBeingEdited by remember { mutableStateOf<NoteCategory?>(null) }
+    var reminderTarget by remember { mutableStateOf<Note?>(null) }
+    var permissionPending by remember { mutableStateOf<Note?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val target = permissionPending
+        permissionPending = null
+        if (granted && target != null) reminderTarget = target
+        else if (!granted) Toast.makeText(context, "Permission de notification refusée.", Toast.LENGTH_LONG).show()
+    }
 
     fun saveNotes(v: List<Note>) {
         store.saveNotes(v)
@@ -92,6 +109,12 @@ private fun LeafNotesApp() {
     fun saveTrash(v: List<TrashedNote>) {
         store.saveTrash(v)
         trash = v
+    }
+    fun requestReminder(note: Note) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            permissionPending = note
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else reminderTarget = note
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -250,8 +273,10 @@ private fun LeafNotesApp() {
                                         }) { Icon(Icons.Default.Delete, contentDescription = "Mettre à la corbeille") }
                                     }
                                     Text(n.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (n.reminderAt > 0L) Text("⏰ Rappel : " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.reminderAt)), style = MaterialTheme.typography.labelSmall)
                                     Text(n.category + " • " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.updatedAt)),
                                         style = MaterialTheme.typography.labelSmall)
+                                    TextButton(onClick = { requestReminder(n) }) { Text("Programmer un rappel") }
                                 }
                             }
                         }
@@ -329,6 +354,38 @@ private fun LeafNotesApp() {
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
+    }
+
+    if (reminderTarget != null) {
+        val target = reminderTarget!!
+        AlertDialog(
+            onDismissRequest = { reminderTarget = null },
+            title = { Text("Rappel pour " + target.title.ifBlank { "cette note" }) },
+            text = { Text("Choisis quand recevoir une notification locale.") },
+            confirmButton = {
+                Column {
+                    TextButton(onClick = {
+                        scheduleNoteReminder(context, target, 10L)
+                        val at = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10L)
+                        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = at) else it })
+                        reminderTarget = null
+                    }) { Text("Dans 10 minutes") }
+                    TextButton(onClick = {
+                        scheduleNoteReminder(context, target, 60L)
+                        val at = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(60L)
+                        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = at) else it })
+                        reminderTarget = null
+                    }) { Text("Dans 1 heure") }
+                    TextButton(onClick = {
+                        scheduleNoteReminder(context, target, 1440L)
+                        val at = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1440L)
+                        saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = at) else it })
+                        reminderTarget = null
+                    }) { Text("Demain") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { reminderTarget = null }) { Text("Annuler") } }
+        )
     }
 
     if (toolsDialog) AlertDialog(
@@ -418,3 +475,21 @@ private fun LeafNotesApp() {
         dismissButton = { TextButton(onClick = { categoryBeingEdited = null; name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryEditor = false }) { Text("Annuler") } })
 }
 
+
+private fun scheduleNoteReminder(context: Context, note: Note, delayMinutes: Long) {
+    val input = Data.Builder()
+        .putString("note_title", note.title.ifBlank { "Rappel LeafNotes" })
+        .putString("note_body", note.body.take(240))
+        .putString("note_id", note.id)
+        .build()
+    val request = OneTimeWorkRequestBuilder<LeafNoteReminderWorker>()
+        .setInputData(input)
+        .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+        .addTag("leafnotes-reminder-" + note.id)
+        .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(
+        "leafnotes-reminder-" + note.id,
+        ExistingWorkPolicy.REPLACE,
+        request
+    )
+}
