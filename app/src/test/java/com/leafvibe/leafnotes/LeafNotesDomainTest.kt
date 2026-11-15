@@ -60,6 +60,27 @@ class LeafNotesDomainTest {
     }
 
     @Test
+    fun portableArchivePreservesAttachmentsAndNestedNoteParent() {
+        val parent = Note(id = "parent", title = "Dossier", body = "", category = "Cours")
+        val child = Note(
+            id = "child",
+            title = "Vidéo de cours",
+            body = "Voir la pièce jointe",
+            category = "Cours",
+            attachments = listOf(NoteAttachment(id = "media-1", uri = "content://media/video/1", mimeType = "video/mp4", displayName = "cours.mp4", sizeBytes = 1234L)),
+            parentNoteId = parent.id
+        )
+        val archive = LeafNotesTransfer.decode(
+            LeafNotesTransfer.encode(listOf(parent, child), listOf(NoteCategory("Cours", "📚", 1L)))
+        )
+        val restored = archive.notes.single { it.id == child.id }
+        assertEquals(parent.id, restored.parentNoteId)
+        assertEquals("cours.mp4", restored.attachments.single().displayName)
+        assertEquals("video/mp4", restored.attachments.single().mimeType)
+        assertEquals(1234L, restored.attachments.single().sizeBytes)
+    }
+
+    @Test
     fun suggestionsAreDeterministicAndRemainLocal() {
         val categories = listOf(
             NoteCategory("Cours de maths", "📚", 1L),
