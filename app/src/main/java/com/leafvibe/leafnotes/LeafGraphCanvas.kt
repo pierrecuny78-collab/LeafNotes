@@ -52,7 +52,6 @@ fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCategory> = em
     val graphPrefs = remember { context.getSharedPreferences("leafnotes-graph", android.content.Context.MODE_PRIVATE) }
     var backgroundMode by remember { mutableStateOf(graphPrefs.getString("background", "Crème") ?: "Crème") }
     var nodeMode by remember { mutableStateOf(graphPrefs.getString("node", "Rond") ?: "Rond") }
-    var showCategoryPicker by remember { mutableStateOf(false) }
     val categoryNames = remember(notes, categories) { (categories.map { it.name } + notes.map { it.category }).distinct().sorted() }
     val filteredNotes = remember(notes, activeCategory) {
         if (activeCategory == "Toutes") notes else notes.filter { it.category == activeCategory }
