@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -47,8 +48,10 @@ fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCategory> = em
     var pan by remember { mutableStateOf(Offset.Zero) }
     var selected by remember { mutableStateOf<Note?>(null) }
     var activeCategory by remember { mutableStateOf("Toutes") }
-    var backgroundMode by remember { mutableStateOf("Crème") }
-    var nodeMode by remember { mutableStateOf("Rond") }
+    val context = LocalContext.current
+    val graphPrefs = remember { context.getSharedPreferences("leafnotes-graph", android.content.Context.MODE_PRIVATE) }
+    var backgroundMode by remember { mutableStateOf(graphPrefs.getString("background", "Crème") ?: "Crème") }
+    var nodeMode by remember { mutableStateOf(graphPrefs.getString("node", "Rond") ?: "Rond") }
     var showCategoryPicker by remember { mutableStateOf(false) }
     val categoryNames = remember(notes, categories) { (categories.map { it.name } + notes.map { it.category }).distinct().sorted() }
     val filteredNotes = remember(notes, activeCategory) {
@@ -104,10 +107,10 @@ fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCategory> = em
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 5.dp)) {
                     items(listOf("Crème", "Nuit", "Sauge", "Papier")) { mode ->
-                        androidx.compose.material3.FilterChip(selected = backgroundMode == mode, onClick = { backgroundMode = mode }, label = { Text(mode) })
+                        androidx.compose.material3.FilterChip(selected = backgroundMode == mode, onClick = { backgroundMode = mode; graphPrefs.edit().putString("background", mode).apply() }, label = { Text(mode) })
                     }
                     items(listOf("Rond", "Carré", "Losange")) { mode ->
-                        androidx.compose.material3.FilterChip(selected = nodeMode == mode, onClick = { nodeMode = mode }, label = { Text(mode) })
+                        androidx.compose.material3.FilterChip(selected = nodeMode == mode, onClick = { nodeMode = mode; graphPrefs.edit().putString("node", mode).apply() }, label = { Text(mode) })
                     }
                 }
                 Text("Pince pour zoomer · fais glisser pour déplacer · touche un nœud pour ouvrir la note",
