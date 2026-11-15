@@ -285,8 +285,8 @@ private fun LeafNotesApp() {
                 )
                 Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; page = 0 }, label = { Text("Tout") }) }
-                    item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; page = 0 }, label = { Text("⭐ Favoris") }) }
+                    item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; expandedCategory = null; page = 0 }, label = { Text("Tout") }) }
+                    item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; expandedCategory = null; page = 0 }, label = { Text("⭐ Favoris") }) }
                     items(categories.filter { it.parent.isBlank() }) { category ->
                         FilterChip(selectedCategory == category.name, {
                             selectedCategory = category.name
