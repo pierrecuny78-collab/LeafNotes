@@ -170,12 +170,17 @@ internal object LeafNotesTransfer {
         val remappedNotes = incomingNotes.map { note ->
             note.copy(category = categoryMap[note.category] ?: note.category)
         }
+        val knownCategoryNames = (currentCategories + incomingCategories).mapTo(mutableSetOf()) { it.name.lowercase() }
+        val missingCategories = remappedNotes.map { it.category }.distinctBy { it.lowercase() }
+            .filter { knownCategoryNames.add(it.lowercase()) }
+            .map { NoteCategory(it, "📁", 0xFF6C9B80) }
+        val allImportedCategories = incomingCategories + missingCategories
         return ImportResult(
             notes = currentNotes + remappedNotes,
-            categories = currentCategories + incomingCategories,
+            categories = currentCategories + allImportedCategories,
             addedNotes = remappedNotes.size,
             skippedNotes = skipped,
-            addedCategories = incomingCategories.size,
+            addedCategories = allImportedCategories.size,
             trash = currentTrash + archive.trash.filterNot { incoming -> currentTrash.any { it.note.id == incoming.note.id } }
         )
     }
