@@ -379,6 +379,9 @@ private fun LeafNotesApp() {
         var noteIcon by remember(editing) { mutableStateOf(editing?.icon ?: "📝") }
         var showHistory by remember(editing) { mutableStateOf(false) }
         var showTemplatePicker by remember(editing) { mutableStateOf(false) }
+        var showSuggestions by remember(editing) { mutableStateOf(false) }
+        var suggestionTags by remember(editing) { mutableStateOf(emptyList<String>()) }
+        var suggestionCategory by remember(editing) { mutableStateOf<String?>(null) }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
             text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -429,6 +432,12 @@ private fun LeafNotesApp() {
                         Toast.makeText(context, "Modèle enregistré.", Toast.LENGTH_SHORT).show()
                     }, modifier = Modifier.weight(1f)) { Text("Enregistrer comme modèle") }
                 }
+                OutlinedButton(onClick = {
+                    val result = LeafNotesSuggestions.suggest(title, body, categories)
+                    suggestionTags = result.tags
+                    suggestionCategory = result.category
+                    showSuggestions = true
+                }, modifier = Modifier.fillMaxWidth()) { Text("Suggestions locales hors ligne") }
                 if (editing != null) OutlinedButton(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) { Text("Historique des versions (" + (editing?.revisions?.size ?: 0) + ")") }
                 Text("Enregistrer dans : " + category)
                 categories.forEach { c -> TextButton(onClick = { category = c.name }) { Text((if (c.parent == null) "" else "↳ ") + c.emoji + " " + c.name) } }
@@ -474,6 +483,29 @@ private fun LeafNotesApp() {
             confirmButton = { TextButton(onClick = { showTemplatePicker = false }) { Text("Fermer") } }
         )
     }
+
+        if (showSuggestions) {
+            AlertDialog(
+                onDismissRequest = { showSuggestions = false },
+                title = { Text("Suggestions locales") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Analyse effectuée sur cet appareil, sans connexion ni envoi de tes notes.")
+                        Text("Étiquettes proposées : " + (suggestionTags.joinToString(", ").ifBlank { "Aucune" }))
+                        Text("Catégorie proposée : " + (suggestionCategory ?: "Aucune correspondance"))
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val existing = LeafNotesOrganization.normalizeTags(tagsText.split(","))
+                        tagsText = LeafNotesOrganization.normalizeTags(existing + suggestionTags).joinToString(", ")
+                        suggestionCategory?.let { category = it }
+                        showSuggestions = false
+                    }) { Text("Appliquer") }
+                },
+                dismissButton = { TextButton(onClick = { showSuggestions = false }) { Text("Fermer") } }
+            )
+        }
 
         if (showHistory) {
         val history = editing?.revisions.orEmpty()
