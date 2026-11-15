@@ -46,7 +46,7 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 .put("flashcards", note.flashcards.toJson())
                 .put("icon", note.icon)
                 .put("reminderAt", note.reminderAt)
-                .put("revisions", note.revisions.toJson()))
+                .put("revisions", note.revisions.toRevisionsJson()))
         }
         preferences.edit().putString(KEY_NOTES, array.toString()).apply()
     }
@@ -145,7 +145,7 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     .put("flashcards", note.flashcards.toJson())
                     .put("icon", note.icon)
                     .put("reminderAt", note.reminderAt)
-                    .put("revisions", note.revisions.toJson())))
+                    .put("revisions", note.revisions.toRevisionsJson())))
         }
         preferences.edit().putString(KEY_TRASH, array.toString()).apply()
     }
@@ -177,7 +177,7 @@ private fun JSONArray?.toChecklist(): List<ChecklistItem> {
     }
 }
 
-private fun List<NoteRevision>.toJson(): JSONArray = JSONArray().apply {
+private fun List<NoteRevision>.toRevisionsJson(): JSONArray = JSONArray().apply {
     forEach { revision -> put(JSONObject().put("id", revision.id).put("noteId", revision.noteId).put("title", revision.title).put("body", revision.body).put("savedAt", revision.savedAt)) }
 }
 
