@@ -93,6 +93,20 @@ class LeafNotesDomainTest {
     }
 
     @Test
+    fun deletingCustomRootCategoryMovesNotesAndPromotesChildren() {
+        val notes = listOf(Note(id = "n1", title = "Note", body = "", category = "Projet"))
+        val categories = listOf(
+            NoteCategory("Projet", "📁", 1L),
+            NoteCategory("Sous-dossier", "📂", 2L, "Projet"),
+            NoteCategory("Nouveaux", "✨", 3L)
+        )
+        val result = LeafNotesOrganization.deleteCustomCategory("Projet", notes, categories)
+        assertEquals("Nouveaux", result?.notes?.single()?.category)
+        assertEquals(null, result?.categories?.single { it.name == "Sous-dossier" }?.parent)
+        assertTrue(LeafNotesOrganization.deleteCustomCategory("Cours", notes, categories) == null)
+    }
+
+    @Test
     fun categoryMoveRejectsSelfParentAndCycles() {
         val categories = listOf(
             NoteCategory("Cours", "📚", 1L),
