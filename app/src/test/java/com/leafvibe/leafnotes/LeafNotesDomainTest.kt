@@ -31,6 +31,18 @@ class LeafNotesDomainTest {
     }
 
     @Test
+    fun spacedRepetitionSchedulesReviewAndMastery() {
+        val card = Flashcard(id = "q1", question = "2 + 2 ?", answer = "4")
+        val retry = LeafQuizScheduling.review(card, remembered = false, now = 1_000L)
+        assertEquals(601_000L, retry.dueAt)
+        assertEquals(0, retry.repetitions)
+        val mastered = LeafQuizScheduling.review(card, remembered = true, now = 1_000L)
+        assertEquals(86_401_000L, mastered.dueAt)
+        assertEquals(1, mastered.intervalDays)
+        assertEquals(1, mastered.repetitions)
+    }
+
+    @Test
     fun categoryMoveRejectsSelfParentAndCycles() {
         val categories = listOf(
             NoteCategory("Cours", "📚", 1L),
