@@ -145,6 +145,27 @@ private fun LeafNotesApp() {
             Toast.makeText(context, if (result.isSuccess) "Sauvegarde exportée." else "Échec de l'export.", Toast.LENGTH_LONG).show()
         }
     }
+    val zipExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use {
+                    it.write(LeafNotesTransfer.encodeZip(notes, categories, trash, templates))
+                } ?: error("Impossible d'ouvrir le fichier ZIP.")
+            }
+            Toast.makeText(context, if (result.isSuccess) "Archive ZIP créée." else "Échec de l'export ZIP.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val pdfExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching { LeafNotesPdf.write(context, uri, notes) }
+            Toast.makeText(context, if (result.isSuccess) "Export PDF terminé." else "Échec de l'export PDF.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     val textExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri ->
@@ -542,11 +563,19 @@ private fun LeafNotesApp() {
                 }, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
                 OutlinedButton(onClick = {
                     toolsDialog = false
+                    zipExportLauncher.launch("LeafNotes-" + System.currentTimeMillis() + ".zip")
+                }, modifier = Modifier.fillMaxWidth()) { Text("Exporter une archive ZIP") }
+                OutlinedButton(onClick = {
+                    toolsDialog = false
+                    pdfExportLauncher.launch("LeafNotes-" + System.currentTimeMillis() + ".pdf")
+                }, modifier = Modifier.fillMaxWidth()) { Text("Exporter en PDF") }
+                OutlinedButton(onClick = {
+                    toolsDialog = false
                     textExportLauncher.launch("LeafNotes-" + System.currentTimeMillis() + ".txt")
                 }, modifier = Modifier.fillMaxWidth()) { Text("Exporter les notes en TXT") }
                 OutlinedButton(onClick = {
                     toolsDialog = false
-                    importLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                    importLauncher.launch(arrayOf("application/json", "application/zip", "application/octet-stream", "*/*"))
                 }, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde") }
                 OutlinedButton(onClick = {
                     toolsDialog = false
@@ -573,6 +602,7 @@ private fun LeafNotesApp() {
                                     val restored = LeafNotesTrash.restore(trash, entry.note.id, notes)
                                     saveNotes(restored.first)
                                     saveTrash(restored.second)
+                                    restored.first.firstOrNull { it.id == entry.note.id }?.takeIf { it.reminderAt > System.currentTimeMillis() }?.let { scheduleNoteReminderAt(context, it, it.reminderAt) }
                                 }) { Text("Restaurer") }
                                 TextButton(onClick = {
                                     saveTrash(LeafNotesTrash.permanentlyDelete(trash, entry.note.id))
