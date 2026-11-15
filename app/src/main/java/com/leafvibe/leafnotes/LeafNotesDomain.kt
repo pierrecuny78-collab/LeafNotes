@@ -142,3 +142,35 @@ internal class LeafNotesHistory<T>(private val limit: Int = 50) {
     fun canUndo() = undoStack.isNotEmpty()
     fun canRedo() = redoStack.isNotEmpty()
 }
+
+
+internal data class NoteSuggestions(
+    val tags: List<String>,
+    val category: String?
+)
+
+/** Deterministic offline suggestions; no text leaves the device. */
+internal object LeafNotesSuggestions {
+    private val ignored = setOf(
+        "avec", "dans", "pour", "plus", "comme", "cette", "cela", "être", "avoir",
+        "faire", "mais", "donc", "leur", "leurs", "nous", "vous", "elle", "elles",
+        "they", "this", "that", "from", "with", "have", "will", "your", "about",
+        "what", "when", "where", "which", "then", "than", "into", "also"
+    )
+
+    fun suggest(title: String, body: String, categories: List<NoteCategory>): NoteSuggestions {
+        val text = (title + " " + body).lowercase()
+        val words = Regex("[\\p{L}\\p{N}]{4,}").findAll(text)
+            .map { it.value }
+            .filterNot { it in ignored }
+            .toList()
+        val tags = words.groupingBy { it }.eachCount()
+            .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(5).map { it.key }
+        val category = categories.map { candidate ->
+            val tokens = Regex("[\\p{L}\\p{N}]{3,}").findAll(candidate.name.lowercase()).map { it.value }.toList()
+            candidate to tokens.count { token -> Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(token) + "(?![\\p{L}\\p{N}])").containsMatchIn(text) }
+        }.filter { it.second > 0 }.maxByOrNull { it.second }?.first?.name
+        return NoteSuggestions(tags, category)
+    }
+}
