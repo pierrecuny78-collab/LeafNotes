@@ -75,6 +75,7 @@ private fun LeafNotesApp() {
     var notes by remember { mutableStateOf(store.loadNotes()) }
     var categories by remember { mutableStateOf(store.loadCategories(starterCategories)) }
     var trash by remember { mutableStateOf(store.loadTrash()) }
+    var templates by remember { mutableStateOf(store.loadTemplates()) }
     var toolsDialog by remember { mutableStateOf(false) }
     var trashDialog by remember { mutableStateOf(false) }
     var dark by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
@@ -117,6 +118,10 @@ private fun LeafNotesApp() {
         store.saveTrash(v)
         trash = v
     }
+    fun saveTemplates(v: List<NoteTemplate>) {
+        store.saveTemplates(v)
+        templates = v
+    }
     fun requestReminder(note: Note) {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             permissionPending = note
@@ -134,7 +139,7 @@ private fun LeafNotesApp() {
         if (uri != null) {
             val result = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use {
-                    it.write(LeafNotesTransfer.encode(notes, categories, trash))
+                    it.write(LeafNotesTransfer.encode(notes, categories, trash, templates))
                 } ?: error("Impossible d'ouvrir le fichier de destination.")
             }
             Toast.makeText(context, if (result.isSuccess) "Sauvegarde exportée." else "Échec de l'export.", Toast.LENGTH_LONG).show()
@@ -160,10 +165,11 @@ private fun LeafNotesApp() {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: error("Impossible de lire le fichier sélectionné.")
                 val archive = LeafNotesTransfer.decode(bytes)
-                val merged = LeafNotesTransfer.merge(notes, categories, archive, trash)
+                val merged = LeafNotesTransfer.merge(notes, categories, archive, trash, templates)
                 saveNotes(merged.notes)
                 saveCategories(merged.categories)
                 saveTrash(merged.trash)
+                saveTemplates(merged.templates)
                 merged.notes.filter { it.reminderAt > System.currentTimeMillis() }.forEach { scheduleNoteReminderAt(context, it, it.reminderAt) }
                 merged
             }
@@ -340,6 +346,7 @@ private fun LeafNotesApp() {
         var answerDraft by remember(editing) { mutableStateOf("") }
         var noteIcon by remember(editing) { mutableStateOf(editing?.icon ?: "📝") }
         var showHistory by remember(editing) { mutableStateOf(false) }
+        var showTemplatePicker by remember(editing) { mutableStateOf(false) }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
             text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -382,6 +389,14 @@ private fun LeafNotesApp() {
                     flashcards = flashcards + Flashcard(question = questionDraft.trim(), answer = answerDraft.trim())
                     questionDraft = ""; answerDraft = ""
                 }) { Text("Ajouter à LeafQuiz") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { showTemplatePicker = true }, modifier = Modifier.weight(1f)) { Text("Utiliser un modèle") }
+                    OutlinedButton(onClick = {
+                        val templateName = title.trim().ifBlank { "Modèle " + (templates.size + 1) }
+                        saveTemplates(templates + NoteTemplate(name = templateName, title = title, body = body, category = category))
+                        Toast.makeText(context, "Modèle enregistré.", Toast.LENGTH_SHORT).show()
+                    }, modifier = Modifier.weight(1f)) { Text("Enregistrer comme modèle") }
+                }
                 if (editing != null) OutlinedButton(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) { Text("Historique des versions (" + (editing?.revisions?.size ?: 0) + ")") }
                 Text("Enregistrer dans : " + category)
                 categories.forEach { c -> TextButton(onClick = { category = c.name }) { Text((if (c.parent == null) "" else "↳ ") + c.emoji + " " + c.name) } }
@@ -400,6 +415,33 @@ private fun LeafNotesApp() {
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
+    }
+
+    if (editor && showTemplatePicker) {
+        AlertDialog(
+            onDismissRequest = { showTemplatePicker = false },
+            title = { Text("Modèles de notes") },
+            text = {
+                if (templates.isEmpty()) Text("Aucun modèle enregistré. Prépare une note puis choisis « Enregistrer comme modèle ».")
+                else LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(templates, key = { it.id }) { template ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Text(template.name, fontWeight = FontWeight.SemiBold)
+                            Text(template.title.ifBlank { "Sans titre" })
+                            Text(template.body.take(100), maxLines = 2)
+                            TextButton(onClick = {
+                                title = template.title
+                                body = template.body
+                                if (template.category != null && categories.any { it.name == template.category }) category = template.category
+                                showTemplatePicker = false
+                            }) { Text("Appliquer ce modèle") }
+                            Divider()
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTemplatePicker = false }) { Text("Fermer") } }
+        )
     }
 
     if (editor && showHistory) {
