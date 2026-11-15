@@ -1,97 +1,71 @@
 # Feuille de route LeafNotes — version complète
 
-Cette feuille de route distingue le code présent, les fonctions réellement accessibles dans l'application et les travaux restant à faire. Un modèle de données ou une classe utilitaire ne signifie pas qu'une fonction est déjà disponible dans l'interface.
+Cette feuille de route distingue les fonctions intégrées à l'interface, celles qui disposent d'une persistance et celles encore planifiées. Une classe de domaine seule ne constitue pas une fonction livrée.
 
-## V0.1 — Socle de bibliothèque
+## Socle intégré — version 0.3.0 en test
 
-- [x] Application Android native Kotlin + Jetpack Compose
-- [x] Catégories initiales et navigation
-- [x] Création et modification de notes texte
-- [x] Favoris, suppression simple et recherche titre/contenu
-- [x] Pagination par groupes de cinq notes
-- [x] Thème clair/sombre
-- [x] Persistance locale des notes et catégories
-- [x] Première vue LeafGraph
+- [x] Application Android Kotlin + Jetpack Compose, locale et offline-first
+- [x] Bibliothèque de notes, favoris, recherche et pagination de cinq notes
+- [x] Grille de notes responsive selon la largeur disponible
+- [x] Catégories hiérarchiques, cinq éléments par page, navigation parent/enfant
+- [x] Catégories protégées : aucune suppression de catégorie ; renommage et personnalisation nom/emoji/couleur
+- [x] Notes avec icône/emoji, tags, checklist interactive et cartes Q/R
+- [x] Recherche dans titre, contenu, tags et tâches
+- [x] Corbeille de notes avec restauration et suppression définitive explicite
+- [x] LeafBackup : export/import .leafnotes, fusion sans écrasement des notes locales et conservation de la corbeille
+- [x] Réparation des catégories manquantes référencées par des notes importées
+- [x] Export TXT incluant tags, tâches et cartes Q/R
+- [x] LeafGraph interactif : filtre par catégorie, fonds Crème/Nuit/Sauge/Papier, formes Rond/Carré/Losange, zoom, déplacement, liens [[Titre]] avec flèches
+- [x] Préférences du fond et de la forme de LeafGraph persistées localement
+- [x] LeafSwipe : révision par cartes et geste horizontal
+- [x] LeafLearning : reformulation active avant révélation et statistiques de session
+- [x] LeafQuiz : cartes question/réponse et répétition espacée avec progression persistante
+- [x] Rappels locaux Android via WorkManager, permission de notification et annulation
+- [x] Panneau Paramètres/Aide et accès LeafBackup
+- [x] Icône Android LeafVibe
+- [x] Tests JVM, tests instrumentés et tests UI ajoutés
+- [ ] Validation finale CI de tous les tests et compilation de l'APK 0.3.0
+- [ ] Installation et validation manuelle sur Samsung Galaxy A15 5G
 
-## V0.2 — Organisation de bibliothèque
+## Prochaine étape — éditeur et médias
 
-- [x] Catégories hiérarchiques et sous-catégories (premier niveau de navigation)
-- [x] Pagination des catégories par groupes de cinq
-- [ ] Grille responsive 5 × 5 sur les grands écrans, adaptation mobile
-- [ ] Fil d'Ariane complet avec retour à chaque ancêtre
-- [ ] Renommer une catégorie et modifier son emoji/couleur
-- [ ] Réordonner et déplacer catégories/sous-catégories
-- [ ] Déplacer une note entre catégories depuis la liste et l'éditeur
-- [ ] Suppression de catégorie avec choix explicite : déplacer, archiver ou supprimer son contenu
-- [ ] Validation des cycles et de l'intégrité des hiérarchies dans chaque action UI
-- [ ] Tags multiples, filtres combinés, tri par nom/date/création/modification
-- [ ] Épingles, archives et vues intelligentes
-- [ ] Modèles personnalisables
-
-Le domaine contient des fonctions de validation des déplacements et de recherche par tags, mais les commandes correspondantes doivent encore être branchées à l'interface.
-
-## V0.3 — Données, sauvegarde et ordinateur
-
-- [x] Définition du format portable versionné .leafnotes
-- [x] Encodeur/décodeur JSON et fusion sans écrasement des identifiants existants
-- [ ] Écran et actions Android d'export/import via Storage Access Framework
-- [ ] Sauvegarde/restauration de toute la bibliothèque, catégories, notes, métadonnées et pièces jointes
-- [ ] Export TXT et PDF
-- [ ] Export/import JSON documenté
-- [ ] Export ZIP des pièces jointes avec manifeste et sommes de contrôle
-- [ ] Aperçu avant import, détection doublons et choix de résolution
-- [ ] Sauvegarde planifiée locale avec rétention configurable
-- [ ] Transfert ordinateur par fichier USB/partage Android; aucune synchronisation cloud obligatoire
-- [ ] Vérification d'intégrité et reprise après import interrompu
-
-## V0.4 — Éditeur complet
-
-- [ ] Éditeur enrichi avec mise en forme, titres, listes, citations et liens
-- [x] Modèles de domaine pour checklist et pièces jointes
-- [ ] Interface checklist interactive et tableaux
-- [ ] Ajout d'images, documents et fichiers joints via SAF
+- [ ] Images et pièces jointes intégrées à une note, avec copie locale et sauvegarde portable des fichiers
 - [ ] Dessin manuscrit avec stylet/doigt, gomme, couleurs et export
-- [ ] Enregistrement audio, lecture et transcription locale si moteur disponible
-- [ ] Prévisualisation des pièces jointes et gestion du stockage
-- [ ] Liens entre notes et backlinks
-- [ ] Autosauvegarde, indicateur d'état et restauration après fermeture inattendue
+- [ ] Enregistrement audio et lecture
+- [ ] Mise en forme enrichie : titres, gras, listes, citations et liens
+- [ ] Modèles de notes réutilisables
+- [ ] Historique des révisions persistant, annulation et rétablissement
+- [ ] Rappels personnalisés date/heure, répétition, modification et annulation depuis l'éditeur
 
-## V0.5 — Rappels et productivité
+## Organisation avancée
 
-- [x] Modèles de données pour rappels et modèles de notes
-- [ ] Interface de création de rappel et notifications Android
-- [ ] Rappels ponctuels et récurrents avec fuseau horaire
-- [ ] Vue calendrier/journal
-- [ ] Notes épinglées, tâches et échéances
-- [ ] Historique des révisions, annulation/rétablissement persistant
+- [ ] Fil d'Ariane complet et navigation vers chaque ancêtre
+- [ ] Déplacement de catégories et sous-dossiers avec prévention des cycles
+- [ ] Déplacement multiple de notes, tri et filtres combinés
+- [ ] Sous-notes et backlinks
+- [ ] Vues intelligentes : récemment modifiées, épinglées, archivées, tâches à faire
+- [ ] Export sélectif et ZIP avec manifeste, pièces jointes et empreintes SHA-256
+- [ ] Export PDF et Markdown
 
-## V0.6 — Protection, partage et accessibilité
+## Modules Leaf
 
-- [ ] Verrouillage biométrique ou code, verrouillage automatique
-- [ ] Chiffrement des sauvegardes avec phrase secrète et format documenté
-- [ ] Protection des exports et avertissement avant partage de données sensibles
-- [ ] Partage Android entrant/sortant et impression
-- [ ] Accessibilité TalkBack, tailles de texte, contraste et navigation clavier
-- [ ] Localisation française complète et préparation multilingue
-- [ ] Statistiques locales optionnelles
+- [ ] LeafGraph : liens graphiques éditables, positions personnalisées des nœuds et vues locales/globales
+- [ ] LeafFlow : éditeur de workflows distinct du graphe de connaissances, simulation et exécution locale contrôlée
+- [ ] LeafLearning : progression durable par note et statistiques à long terme
+- [ ] LeafQuiz : questions à choix multiples et évaluations avancées
+- [ ] IA hybride facultative, locale prioritaire, aucun envoi distant sans consentement
+- [ ] Synchronisation automatique entre appareils autorisés, file hors ligne et résolution non destructive des conflits
 
-## V0.7 — Qualité et compatibilité
+## Validation et publication
 
-- [ ] Tests unitaires des hiérarchies, import/export, doublons et corbeille
-- [ ] Tests UI des parcours principaux et des permissions Android
-- [ ] Tests de migration de données entre versions
-- [ ] Tests sur petit écran, tablette et rotation
-- [ ] Tests de performance avec grande bibliothèque et pièces jointes
-- [ ] Vérification confidentialité : fonctionnement avion, aucune requête réseau non sollicitée
-- [ ] Tests d'installation/mise à jour sur Samsung Galaxy A15 5G
+- [ ] Tests de migration depuis les anciennes structures
+- [ ] Tests d'import/export sur bibliothèque volumineuse
+- [ ] Tests permissions, rappels et notifications Android
+- [ ] Tests performance, accessibilité, tablette et rotation
+- [ ] Installation/mise à jour sur Samsung Galaxy A15 5G
 - [ ] Build release signé et APK final vérifié
-- [ ] Guide utilisateur, notes de version et procédure de restauration
+- [ ] Guide utilisateur et procédure de restauration
 
 ## Règle de livraison
 
-Une fonction n'est considérée terminée que lorsque son interface est accessible, que les données survivent à un redémarrage, que les cas d'erreur sont traités et qu'un test pertinent passe. La présence d'une classe de domaine seule ne suffit pas.
-
-## État des derniers ajouts
-
-- `LeafNotesTransfer.kt` : format .leafnotes, lecture/écriture et fusion sûre. L'écran d'import/export n'est pas encore raccordé.
-- `LeafNotesDomain.kt` : modèles checklist/pièces jointes/rappels/modèles/révisions, fonctions tags/hiérarchie et historique en mémoire. Les écrans et la persistance correspondants restent à réaliser.
+Une fonctionnalité n'est considérée terminée que si elle est accessible dans l'interface, que ses données sont persistées, que les erreurs sont traitées et qu'un test pertinent réussit. La validation sur l'appareil réel reste distincte de la compilation en émulateur.
