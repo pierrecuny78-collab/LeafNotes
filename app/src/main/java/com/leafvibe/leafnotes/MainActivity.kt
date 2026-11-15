@@ -1,6 +1,8 @@
 package com.leafvibe.leafnotes
 
 import android.content.Context
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.os.Bundle
@@ -53,6 +55,8 @@ import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
 import java.util.Calendar
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.util.UUID
 
 data class Note(
@@ -162,6 +166,32 @@ private fun LeafNotesApp() {
     val backupExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.openOutputStream(uri)?.use { it.write(buildBackupJson(notes, categories).toByteArray(Charsets.UTF_8)) }
+        }
+    }
+    val textExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(buildTextExport(notes).toByteArray(Charsets.UTF_8)) }
+        }
+    }
+    val markdownExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(buildMarkdownExport(notes).toByteArray(Charsets.UTF_8)) }
+        }
+    }
+    val pdfExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { writePdfExport(it, notes) }
+        }
+    }
+    val zipExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                ZipOutputStream(output).use { zip ->
+                    zip.putNextEntry(ZipEntry("LeafNotes-sauvegarde.json"))
+                    zip.write(buildBackupJson(notes, categories).toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+            }
         }
     }
     val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -349,7 +379,15 @@ private fun LeafNotesApp() {
     if (showLearning) LeafLearningDialog(notes) { showLearning = false }
     if (showQuiz) LeafQuizDialog(notes) { showQuiz = false }
     if (showBackup) LeafBackupDialog(
-        onExport = { backupExport.launch("LeafNotes-sauvegarde.json") },
+        onExport = { format ->
+            when (format) {
+                "txt" -> textExport.launch("LeafNotes.txt")
+                "md" -> markdownExport.launch("LeafNotes.md")
+                "pdf" -> pdfExport.launch("LeafNotes.pdf")
+                "zip" -> zipExport.launch("LeafNotes-sauvegarde.zip")
+                else -> backupExport.launch("LeafNotes-sauvegarde.json")
+            }
+        },
         onImport = { backupImport.launch(arrayOf("application/json", "text/*")) },
         onDismiss = { showBackup = false }
     )
@@ -765,17 +803,21 @@ private fun LeafQuizDialog(notes: List<Note>, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun LeafBackupDialog(onExport: () -> Unit, onImport: () -> Unit, onDismiss: () -> Unit) {
+private fun LeafBackupDialog(onExport: (String) -> Unit, onImport: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("LeafBackup · Sauvegarde locale") },
+        title = { Text("LeafBackup · Export et sauvegarde") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Exporte tes notes et catégories dans un fichier JSON, puis conserve-le sur ta carte SD ou un autre support.")
-                OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
-                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde") }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choisis un format d'export. Le ZIP contient une sauvegarde JSON complète.")
+                OutlinedButton(onClick = { onExport("json") }, modifier = Modifier.fillMaxWidth()) { Text("Sauvegarde JSON") }
+                OutlinedButton(onClick = { onExport("zip") }, modifier = Modifier.fillMaxWidth()) { Text("Archive ZIP") }
+                OutlinedButton(onClick = { onExport("txt") }, modifier = Modifier.fillMaxWidth()) { Text("Texte TXT") }
+                OutlinedButton(onClick = { onExport("md") }, modifier = Modifier.fillMaxWidth()) { Text("Markdown") }
+                OutlinedButton(onClick = { onExport("pdf") }, modifier = Modifier.fillMaxWidth()) { Text("Document PDF") }
+                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde JSON") }
                 Text("L'import fusionne les notes par identifiant et conserve les notes locales absentes du fichier.",
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
@@ -802,6 +844,52 @@ private fun buildBackupJson(notes: List<Note>, categories: List<NoteCategory>): 
         }) }
     })
 }.toString(2)
+
+private fun buildTextExport(notes: List<Note>): String = notes.joinToString("\n\n--------------------\n\n") { note ->
+    buildString {
+        append(note.title.ifBlank { "Sans titre" }).append("\n")
+        append("Catégorie : ").append(note.category).append("\n")
+        if (note.tags.isNotEmpty()) append("Tags : ").append(note.tags.joinToString(", ")).append("\n")
+        append(note.body)
+        if (note.mediaUris.isNotEmpty()) append("\n\nPièces jointes :\n").append(note.mediaUris.joinToString("\n"))
+    }
+}
+
+private fun buildMarkdownExport(notes: List<Note>): String = notes.joinToString("\n\n---\n\n") { note ->
+    buildString {
+        append("# ").append(note.title.ifBlank { "Sans titre" }).append("\n\n")
+        append("**Catégorie :** ").append(note.category).append("\n\n")
+        if (note.tags.isNotEmpty()) append("**Tags :** ").append(note.tags.joinToString(", ")).append("\n\n")
+        append(note.body)
+        if (note.mediaUris.isNotEmpty()) append("\n\n**Pièces jointes**\n").append(note.mediaUris.joinToString("\n") { "- $it" })
+    }
+}
+
+private fun writePdfExport(output: java.io.OutputStream, notes: List<Note>) {
+    val document = PdfDocument()
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f; color = android.graphics.Color.BLACK }
+    val lines = buildTextExport(notes).lines().flatMap { line ->
+        if (line.length <= 86) listOf(line) else line.chunked(86)
+    }
+    var pageNumber = 1
+    var page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNumber).create())
+    var canvas = page.canvas
+    var y = 48f
+    lines.forEach { line ->
+        if (y > 800f) {
+            document.finishPage(page)
+            pageNumber += 1
+            page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNumber).create())
+            canvas = page.canvas
+            y = 48f
+        }
+        canvas.drawText(line.take(86), 40f, y, paint)
+        y += 17f
+    }
+    document.finishPage(page)
+    document.writeTo(output)
+    document.close()
+}
 
 private fun parseBackupNotes(array: JSONArray): List<Note> = (0 until array.length()).map { i ->
     val o = array.getJSONObject(i)
