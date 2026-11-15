@@ -15,7 +15,6 @@
 - Listes à cocher interactives dans l'éditeur.
 - Questions/réponses liées aux notes et révisions espacées avec LeafQuiz.
 - Couleurs de catégories visibles dans la bibliothèque et LeafGraph.
-- Modification et suppression des catégories avec conservation des notes.
 - Corbeille persistante avec restauration et suppression définitive.
 - Export/import de sauvegardes `.leafnotes` via le sélecteur de fichiers Android.
 - Fusion d’import sans écraser les notes locales existantes.
@@ -27,11 +26,11 @@
 - Rappels locaux Android avec notifications et annulation.
 - Export texte TXT en complément des archives LeafNotes.
 - Thème clair/sombre et sauvegarde locale automatique.
-- Architecture prévue pour PDF/TXT/LEAFNOTES, pièces jointes, dessin, audio, rappels et sauvegardes externes.
+- Pièces jointes/images, dessin, audio, modèles, révisions et export PDF prévus pour les prochaines étapes.
 
 ## État de la version 0.3.0 en test
 Le socle comprend bibliothèque, catégories hiérarchiques modifiables et colorées, notes, recherche (titre, contenu, étiquettes et checklist), favoris, pagination de cinq notes, thème, persistance locale, corbeille avec restauration, import/export, checklists et LeafQuiz hors ligne avec répétition espacée.
-Les tests JVM et instrumentés couvrent le format d'archive, la fusion sans écrasement, la corbeille, l'organisation, la persistance des étiquettes/checklists/cartes de quiz, la répétition espacée et les principaux écrans.
+Des tests JVM et instrumentés ont été ajoutés pour le format d'archive, la fusion, la corbeille, l'organisation, la persistance, LeafQuiz et les principaux écrans. Leur validation CI complète est en cours.
 Les pièces jointes/images intégrées, dessin, audio, rappels personnalisés date/heure, historique de versions, modèles, synchronisation automatique et IA hybride ne sont pas encore complets et restent à intégrer/tester.
 
 ## Construire l'APK
