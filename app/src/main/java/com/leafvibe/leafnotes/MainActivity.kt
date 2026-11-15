@@ -80,7 +80,6 @@ private fun LeafNotesApp() {
     var emoji by remember { mutableStateOf("📁") }
     var categoryColor by remember { mutableStateOf("#6C9B80") }
     var categoryBeingEdited by remember { mutableStateOf<NoteCategory?>(null) }
-    var categoryToDelete by remember { mutableStateOf<NoteCategory?>(null) }
 
     fun saveNotes(v: List<Note>) {
         store.saveNotes(v)
@@ -194,7 +193,6 @@ private fun LeafNotesApp() {
                                     categoryColor = String.format("#%06X", (c.color and 0xFFFFFF))
                                     categoryEditor = true
                                 }) { Icon(Icons.Default.Edit, contentDescription = "Modifier la catégorie") }
-                                IconButton(onClick = { categoryToDelete = c }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer la catégorie") }
                                 }
                             }
                         }
@@ -384,30 +382,6 @@ private fun LeafNotesApp() {
             if (trash.isNotEmpty()) TextButton(onClick = { saveTrash(emptyList()) }) { Text("Vider la corbeille") }
         }
     )
-
-    if (categoryToDelete != null) {
-        val target = categoryToDelete!!
-        AlertDialog(
-            onDismissRequest = { categoryToDelete = null },
-            title = { Text("Supprimer « " + target.name + " » ?") },
-            text = { Text("Les notes seront déplacées vers le dossier parent ou « Nouveaux ». Les sous-dossiers seront rattachés au parent.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val fallbackCategory = categories.firstOrNull { it.name != target.name && it.parent == null }?.name ?: "Nouveaux"
-                    val destination = target.parent ?: fallbackCategory
-                    val remainingCategories = categories.filterNot { it.name == target.name }
-                    val updatedCategories = (if (remainingCategories.isEmpty()) listOf(NoteCategory("Nouveaux", "✨", 0xFF8E7CC3)) else remainingCategories)
-                        .map { if (it.parent == target.name) it.copy(parent = target.parent) else it }
-                    saveCategories(updatedCategories)
-                    saveNotes(notes.map { if (it.category == target.name) it.copy(category = destination) else it })
-                    if (parent == target.name) parent = target.parent
-                    if (selected == target.name) selected = "Tous"
-                    categoryToDelete = null
-                }) { Text("Supprimer") }
-            },
-            dismissButton = { TextButton(onClick = { categoryToDelete = null }) { Text("Annuler") } }
-        )
-    }
 
     if (categoryEditor) AlertDialog(onDismissRequest = { categoryEditor = false }, title = { Text(if (categoryBeingEdited != null) "Modifier la catégorie" else if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
