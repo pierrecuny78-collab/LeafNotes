@@ -143,6 +143,7 @@ private fun LeafNotesApp() {
                 put("history", JSONArray().apply { n.history.forEach { put(it) } })
             }) }
         }.toString()).apply()
+        LeafNotesWidgetProvider.refresh(context)
     }
     // Never delete categories: preserve existing entries and append new ones.
     fun saveCategories(value: List<NoteCategory>) {
