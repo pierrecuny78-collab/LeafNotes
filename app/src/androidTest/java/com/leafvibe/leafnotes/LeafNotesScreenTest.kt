@@ -27,6 +27,7 @@ class LeafNotesScreenTest {
         composeRule.onNodeWithContentDescription("Nouvelle note").performClick()
         composeRule.onNodeWithText("Étiquettes (séparées par des virgules)").assertIsDisplayed()
         composeRule.onNodeWithText("Liste à cocher").assertIsDisplayed()
+        composeRule.onNodeWithText("Suggestions locales hors ligne").assertIsDisplayed()
         composeRule.onNodeWithText("Nouvel élément").assertIsDisplayed()
         composeRule.onNodeWithText("Questions / réponses pour LeafQuiz").assertIsDisplayed()
     }
