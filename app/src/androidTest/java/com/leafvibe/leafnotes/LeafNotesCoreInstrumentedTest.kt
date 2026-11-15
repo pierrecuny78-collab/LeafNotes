@@ -32,6 +32,17 @@ class LeafNotesCoreInstrumentedTest {
     }
 
     @Test
+    fun zipBackupRoundTripPreservesLibraryAndTemplates() {
+        val note = Note(id = "zip-note", title = "ZIP", body = "Portable", category = "Cours", icon = "🧩", reminderAt = 1234L)
+        val categories = listOf(NoteCategory("Cours", "📚", 0xFF5685C5))
+        val templates = listOf(NoteTemplate(id = "zip-template", name = "Compte rendu", title = "Réunion", body = "Actions", category = "Cours"))
+        val decoded = LeafNotesTransfer.decode(LeafNotesTransfer.encodeZip(listOf(note), categories, templates = templates))
+        assertEquals(listOf(note), decoded.notes)
+        assertEquals(categories, decoded.categories)
+        assertEquals(templates, decoded.templates)
+    }
+
+    @Test
     fun importMergeSkipsExistingIdsAndRenamesCategoryCollisions() {
         val existing = listOf(Note(id = "same", title = "Local", body = "Keep", category = "Cours"))
         val incoming = LeafNotesTransfer.Archive(
