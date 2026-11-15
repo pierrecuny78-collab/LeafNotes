@@ -33,6 +33,8 @@ class LeafNotesScreenTest {
         composeRule.onNodeWithText("Analyse effectuée sur cet appareil, sans connexion ni envoi de tes notes.").assertIsDisplayed()
         composeRule.onNodeWithText("Nouvel élément").assertIsDisplayed()
         composeRule.onNodeWithText("Questions / réponses pour LeafQuiz").assertIsDisplayed()
+        composeRule.onNodeWithText("Médias et fichiers joints").assertIsDisplayed()
+        composeRule.onNodeWithText("Sous-note (facultatif)").assertIsDisplayed()
     }
 
     @Test
@@ -57,6 +59,9 @@ class LeafNotesScreenTest {
         composeRule.onNodeWithText("Sauge").assertIsDisplayed()
         composeRule.onNodeWithText("Papier").assertIsDisplayed()
         composeRule.onNodeWithText("Losange").assertIsDisplayed()
+        composeRule.onNodeWithText("Colonnes").assertIsDisplayed()
+        composeRule.onNodeWithText("Superposition").assertIsDisplayed()
+        composeRule.onNodeWithText("Liens de groupe").assertIsDisplayed()
     }
 
     @Test
