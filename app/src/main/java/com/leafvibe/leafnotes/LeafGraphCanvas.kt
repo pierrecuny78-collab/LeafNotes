@@ -130,6 +130,16 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
                     items(listOf("Rond", "Carré", "Losange")) { mode ->
                         androidx.compose.material3.FilterChip(selected = nodeMode == mode, onClick = { nodeMode = mode; graphPrefs.edit().putString("node", mode).apply() }, label = { Text(mode) })
                     }
+                    items(listOf("Radial", "Colonnes", "Superposition")) { mode ->
+                        androidx.compose.material3.FilterChip(selected = layoutMode == mode, onClick = { layoutMode = mode; graphPrefs.edit().putString("layout", mode).apply() }, label = { Text(mode) })
+                    }
+                    item {
+                        androidx.compose.material3.FilterChip(
+                            selected = overlayEnabled,
+                            onClick = { overlayEnabled = !overlayEnabled; graphPrefs.edit().putBoolean("overlay", overlayEnabled).apply() },
+                            label = { Text("Liens de groupe") }
+                        )
+                    }
                 }
                 Text("Pince pour zoomer · fais glisser pour déplacer · touche un nœud pour ouvrir la note",
                     style = MaterialTheme.typography.bodySmall,
@@ -187,7 +197,7 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
                             textAlign = Paint.Align.CENTER
                         }
                         // Light category clusters: neighbouring notes in a category are visually grouped.
-                        points.groupBy { it.note.category }.values.forEach { group ->
+                        if (overlayEnabled) points.groupBy { it.note.category }.values.forEach { group ->
                             group.zipWithNext().forEach { (a, b) ->
                                 val p1 = mapped(a.x, a.y)
                                 val p2 = mapped(b.x, b.y)
@@ -241,7 +251,7 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
                     OutlinedButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(0.45f) }, modifier = Modifier.weight(1f)) { Text("− Zoom") }
                     OutlinedButton(onClick = { zoom = (zoom * 1.25f).coerceAtMost(4f) }, modifier = Modifier.weight(1f)) { Text("+ Zoom") }
                 }
-                Text("Filtre une catégorie pour isoler son graphe. Les flèches représentent les liens [[Titre exact]] écrits dans les notes.",
+                Text("Filtre une catégorie pour isoler son graphe. Disposition : $layoutMode. Les flèches représentent les liens [[Titre exact]] écrits dans les notes.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp))
