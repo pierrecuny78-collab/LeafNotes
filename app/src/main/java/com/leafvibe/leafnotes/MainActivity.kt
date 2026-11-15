@@ -57,6 +57,8 @@ import java.util.Date
 import java.util.Calendar
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.zip.ZipInputStream
+import java.io.ByteArrayInputStream
 import java.util.UUID
 
 data class Note(
@@ -196,7 +198,15 @@ private fun LeafNotesApp() {
     }
     val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
-            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Fichier vide")
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Fichier vide")
+            val isZip = context.contentResolver.getType(uri) == "application/zip" ||
+                (bytes.size >= 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte())
+            val raw = if (isZip) {
+                ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                    zip.nextEntry ?: error("Archive ZIP vide")
+                    zip.readBytes().toString(Charsets.UTF_8)
+                }
+            } else bytes.toString(Charsets.UTF_8)
             val root = JSONObject(raw)
             val importedNotes = parseBackupNotes(root.optJSONArray("notes") ?: JSONArray())
             val importedCategories = parseBackupCategories(root.optJSONArray("categories") ?: JSONArray())
@@ -388,7 +398,7 @@ private fun LeafNotesApp() {
                 else -> backupExport.launch("LeafNotes-sauvegarde.json")
             }
         },
-        onImport = { backupImport.launch(arrayOf("application/json", "text/*")) },
+        onImport = { backupImport.launch(arrayOf("application/json", "text/*", "application/zip")) },
         onDismiss = { showBackup = false }
     )
     if (showCategoryEditor) CategoryEditorDialog(categories, categoryParent, { showCategoryEditor = false }) { name, emoji, parent ->
