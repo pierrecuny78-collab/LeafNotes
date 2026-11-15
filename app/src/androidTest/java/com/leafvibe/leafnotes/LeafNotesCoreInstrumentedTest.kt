@@ -52,6 +52,19 @@ class LeafNotesCoreInstrumentedTest {
     }
 
     @Test
+    fun importRecreatesCategoryReferencedByNoteWhenArchiveOmitsIt() {
+        val archive = LeafNotesTransfer.Archive(
+            notes = listOf(Note(id = "orphan", title = "Note importée", body = "Texte", category = "Catégorie absente")),
+            categories = emptyList(),
+            exportedAt = 10L
+        )
+        val result = LeafNotesTransfer.merge(emptyList(), listOf(NoteCategory("Cours", "📚", 1L)), archive)
+        assertEquals("Catégorie absente", result.notes.single().category)
+        assertTrue(result.categories.any { it.name == "Catégorie absente" })
+        assertEquals(1, result.addedCategories)
+    }
+
+    @Test
     fun trashCanRestoreAndPermanentlyDeleteNotes() {
         val note = Note(id = "trash-me", title = "À restaurer", body = "Texte", category = "Idées")
         val (remaining, trash) = LeafNotesTrash.moveToTrash(listOf(note), emptyList(), note.id)
