@@ -206,7 +206,9 @@ internal object LeafNotesTransfer {
             skippedNotes = skipped,
             addedCategories = allImportedCategories.size,
             trash = currentTrash + archive.trash.filterNot { incoming -> currentTrash.any { it.note.id == incoming.note.id } },
-            templates = currentTemplates + archive.templates.filterNot { incoming -> currentTemplates.any { it.id == incoming.id } }
+            templates = currentTemplates + archive.templates
+                .map { template -> template.copy(category = template.category?.let { categoryMap[it] ?: it }) }
+                .filterNot { incoming -> currentTemplates.any { it.id == incoming.id } }
         )
     }
 
