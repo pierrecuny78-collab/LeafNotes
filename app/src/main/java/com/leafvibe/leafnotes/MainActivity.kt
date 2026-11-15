@@ -420,6 +420,13 @@ private fun LeafNotesApp() {
                                         }) { Icon(Icons.Default.Delete, contentDescription = "Mettre à la corbeille") }
                                     }
                                     Text(n.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    n.parentNoteId?.let { parentId ->
+                                        val parentTitle = notes.firstOrNull { it.id == parentId }?.title ?: "note parente"
+                                        Text("↳ Sous-note de : " + parentTitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                    if (n.attachments.isNotEmpty()) {
+                                        Text("📎 " + n.attachments.size + " fichier(s) joint(s)", style = MaterialTheme.typography.labelSmall)
+                                    }
                                     if (n.reminderAt > 0L) {
                                         Text("⏰ Rappel : " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.reminderAt)), style = MaterialTheme.typography.labelSmall)
                                         TextButton(onClick = { cancelReminder(n) }) { Text("Annuler le rappel") }
@@ -679,7 +686,10 @@ private fun LeafNotesApp() {
                 Text("LeafNotes fonctionne localement et hors ligne. Les notes, dossiers, listes, cartes et rappels sont conservés sur cet appareil.")
                 Text("LeafGraph : carte interactive, filtre par catégorie, zoom, formes et fonds personnalisables, liens [[Titre]].")
                 Text("LeafSwipe : révision rapide par cartes. LeafLearning : reformulation active. LeafQuiz : questions/réponses avec répétition espacée.")
-                Text("LeafBackup : export/import de la bibliothèque et de la corbeille sans écraser les notes locales existantes.")
+                Text("LeafBackup : export/import de la bibliothèque et de la corbeille sans écraser les notes locales existantes. Les catégories proposent aussi des exports PDF, Markdown, CSV, HTML et JSON.")
+                Text("Médias : ajoute des images, vidéos, fichiers audio et documents à une note. Une image jointe sert aussi d’icône dans LeafGraph.")
+                Text("Sous-notes : associe une note à une note parente depuis l’éditeur. Les rappels actuels sont des rappels ponctuels.")
+                Text("Widget Android : ajoute LeafNotes depuis le sélecteur de widgets de l’écran d’accueil pour afficher le nombre de notes et ouvrir la bibliothèque.")
                 Text("IA hybride et synchronisation automatique entre appareils restent des évolutions planifiées, non activées dans cette APK.")
                 OutlinedButton(onClick = { settingsDialog = false; toolsDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir LeafBackup") }
             }
