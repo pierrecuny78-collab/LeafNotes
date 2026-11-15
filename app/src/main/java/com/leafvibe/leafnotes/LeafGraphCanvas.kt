@@ -43,7 +43,7 @@ import kotlin.math.sin
 private data class LeafGraphPoint(val note: Note, val x: Float, val y: Float)
 
 @Composable
-fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCategory> = emptyList(), onOpen: (Note) -> Unit, onDismiss: () -> Unit) {
+internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCategory> = emptyList(), onOpen: (Note) -> Unit, onDismiss: () -> Unit) {
     var zoom by remember { mutableStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var selected by remember { mutableStateOf<Note?>(null) }
