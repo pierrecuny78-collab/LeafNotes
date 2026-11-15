@@ -53,7 +53,7 @@ import java.util.Date
 import java.util.UUID
 import android.widget.Toast
 
-internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝", val reminderAt: Long = 0L, val revisions: List<NoteRevision> = emptyList())
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝", val reminderAt: Long = 0L, val revisions: List<NoteRevision> = emptyList(), val attachments: List<NoteAttachment> = emptyList(), val parentNoteId: String? = null)
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
@@ -83,6 +83,8 @@ private fun LeafNotesApp() {
     var query by remember { mutableStateOf("") }
     var page by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<Note?>(null) }
+    var editorAttachments by remember(editing?.id) { mutableStateOf(editing?.attachments ?: emptyList()) }
+    var parentNoteId by remember(editing?.id) { mutableStateOf(editing?.parentNoteId) }
     var editor by remember { mutableStateOf(false) }
     var categoryLibrary by remember { mutableStateOf(false) }
     var graphOpen by remember { mutableStateOf(false) }
@@ -210,6 +212,23 @@ private fun LeafNotesApp() {
                 { "Import terminé : " + it.addedNotes + " note(s), " + it.addedCategories + " catégorie(s), " + it.skippedNotes + " doublon(s) ignoré(s)." },
                 { "Import impossible : " + (it.message ?: "erreur inconnue") }
             ), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        uris.forEach { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+            val displayName = runCatching {
+                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment ?: "Fichier joint"
+            editorAttachments = (editorAttachments + NoteAttachment(uri = uri.toString(), mimeType = mime, displayName = displayName)).distinctBy { it.uri }
         }
     }
 
@@ -396,6 +415,25 @@ private fun LeafNotesApp() {
                 OutlinedTextField(noteIcon, { noteIcon = it }, label = { Text("Icône / emoji de la note") }, singleLine = true)
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") })
                 OutlinedTextField(body, { body = it }, label = { Text("Contenu") }, minLines = 4)
+                Text("Médias et fichiers joints", style = MaterialTheme.typography.titleSmall)
+                OutlinedButton(onClick = { mediaPickerLauncher.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Ajouter images, vidéos, audio ou fichiers")
+                }
+                editorAttachments.forEach { attachment ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("📎 " + attachment.displayName, modifier = Modifier.weight(1f), maxLines = 1)
+                        IconButton(onClick = { editorAttachments = editorAttachments.filterNot { it.id == attachment.id } }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Retirer la pièce jointe")
+                        }
+                    }
+                }
+                Text("Sous-note (facultatif)", style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { parentNoteId = null }) { Text(if (parentNoteId == null) "Aucune note parente" else "Retirer le parent") }
+                notes.filter { it.id != editing?.id }.take(40).forEach { parentNote ->
+                    TextButton(onClick = { parentNoteId = parentNote.id }) {
+                        Text((if (parentNoteId == parentNote.id) "✓ " else "↳ ") + parentNote.title.ifBlank { "Sans titre" })
+                    }
+                }
                 OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Étiquettes (séparées par des virgules)") }, singleLine = true)
                 Text("Liste à cocher", style = MaterialTheme.typography.titleSmall)
                 checklist.forEach { item ->
@@ -453,12 +491,12 @@ private fun LeafNotesApp() {
             confirmButton = { TextButton(onClick = {
                 val old = editing
                 val tags = LeafNotesOrganization.normalizeTags(tagsText.split(","))
-                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" })
+                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" }, attachments = editorAttachments, parentNoteId = parentNoteId)
                     else notes.map {
                     if (it.id == old.id) {
                         val changed = old.title != title.trim() || old.body != body
                         val revisions = if (changed) (listOf(NoteRevision(noteId = old.id, title = old.title, body = old.body)) + old.revisions).take(30) else old.revisions
-                        old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" }, updatedAt = System.currentTimeMillis(), revisions = revisions)
+                        old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" }, updatedAt = System.currentTimeMillis(), revisions = revisions, attachments = editorAttachments, parentNoteId = parentNoteId)
                     } else it
                 })
                 editor = false
