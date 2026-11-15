@@ -60,6 +60,18 @@ class LeafNotesDomainTest {
     }
 
     @Test
+    fun suggestionsAreDeterministicAndRemainLocal() {
+        val categories = listOf(
+            NoteCategory("Cours de maths", "📚", 1L),
+            NoteCategory("Cuisine", "🍲", 2L)
+        )
+        val result = LeafNotesSuggestions.suggest("Matrices BTS", "Les matrices servent aux calculs algébriques. Matrices et algèbre.", categories)
+        assertEquals("Cours de maths", result.category)
+        assertTrue(result.tags.contains("matrices"))
+        assertTrue(result.tags.contains("algébriques"))
+    }
+
+    @Test
     fun categoryMoveRejectsSelfParentAndCycles() {
         val categories = listOf(
             NoteCategory("Cours", "📚", 1L),
