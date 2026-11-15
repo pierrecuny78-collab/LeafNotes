@@ -25,6 +25,7 @@ class LeafNotesScreenTest {
         composeRule.onNodeWithText("Étiquettes (séparées par des virgules)").assertIsDisplayed()
         composeRule.onNodeWithText("Liste à cocher").assertIsDisplayed()
         composeRule.onNodeWithText("Nouvel élément").assertIsDisplayed()
+        composeRule.onNodeWithText("Questions / réponses pour LeafQuiz").assertIsDisplayed()
     }
 
     @Test
