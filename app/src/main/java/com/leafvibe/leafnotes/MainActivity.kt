@@ -1,6 +1,8 @@
 package com.leafvibe.leafnotes
 
 import android.content.Context
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.os.Bundle
 import android.Manifest
 import android.content.pm.PackageManager
@@ -50,6 +52,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.UUID
 
 data class Note(
@@ -817,15 +820,47 @@ private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 unt
 
 @Composable
 private fun ReminderDialog(note: Note, onDismiss: () -> Unit, onChoose: (Long) -> Unit) {
+    val context = LocalContext.current
+    fun chooseCustomDateTime() {
+        val initial = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, 1) }
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        val selected = Calendar.getInstance().apply {
+                            set(Calendar.YEAR, year)
+                            set(Calendar.MONTH, month)
+                            set(Calendar.DAY_OF_MONTH, day)
+                            set(Calendar.HOUR_OF_DAY, hour)
+                            set(Calendar.MINUTE, minute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        val delay = ((selected.timeInMillis - System.currentTimeMillis()) / 60_000L).coerceAtLeast(1L)
+                        onChoose(delay)
+                    },
+                    initial.get(Calendar.HOUR_OF_DAY),
+                    initial.get(Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            initial.get(Calendar.YEAR),
+            initial.get(Calendar.MONTH),
+            initial.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rappel · " + note.title.ifBlank { "Sans titre" }) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Choisis quand Android doit te rappeler cette note.")
+                Text("Choisis une date et une heure, ou utilise un délai rapide.")
                 OutlinedButton(onClick = { onChoose(60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans 1 heure") }
                 OutlinedButton(onClick = { onChoose(24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Demain") }
                 OutlinedButton(onClick = { onChoose(7L * 24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans une semaine") }
+                OutlinedButton(onClick = { chooseCustomDateTime() }, modifier = Modifier.fillMaxWidth()) { Text("Choisir date et heure…") }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Annuler") } }
