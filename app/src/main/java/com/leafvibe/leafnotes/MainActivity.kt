@@ -447,9 +447,8 @@ private fun LeafNotesApp() {
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
-    }
 
-    if (editor && showTemplatePicker) {
+        if (showTemplatePicker) {
         AlertDialog(
             onDismissRequest = { showTemplatePicker = false },
             title = { Text("Modèles de notes") },
@@ -476,7 +475,7 @@ private fun LeafNotesApp() {
         )
     }
 
-    if (editor && showHistory) {
+        if (showHistory) {
         val history = editing?.revisions.orEmpty()
         AlertDialog(
             onDismissRequest = { showHistory = false },
@@ -497,6 +496,7 @@ private fun LeafNotesApp() {
             },
             confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Fermer") } }
         )
+        }
     }
 
     if (reminderTarget != null) {
