@@ -18,7 +18,8 @@ internal object LeafNotesTransfer {
         val notes: List<Note>,
         val categories: List<NoteCategory>,
         val exportedAt: Long,
-        val trash: List<TrashedNote> = emptyList()
+        val trash: List<TrashedNote> = emptyList(),
+        val templates: List<NoteTemplate> = emptyList()
     )
 
     data class ImportResult(
@@ -27,10 +28,11 @@ internal object LeafNotesTransfer {
         val addedNotes: Int,
         val skippedNotes: Int,
         val addedCategories: Int,
-        val trash: List<TrashedNote> = emptyList()
+        val trash: List<TrashedNote> = emptyList(),
+        val templates: List<NoteTemplate> = emptyList()
     )
 
-    fun encode(notes: List<Note>, categories: List<NoteCategory>, trash: List<TrashedNote> = emptyList()): ByteArray {
+    fun encode(notes: List<Note>, categories: List<NoteCategory>, trash: List<TrashedNote> = emptyList(), templates: List<NoteTemplate> = emptyList()): ByteArray {
         val root = JSONObject()
             .put("format", FORMAT)
             .put("version", VERSION)
@@ -64,6 +66,12 @@ internal object LeafNotesTransfer {
                         .put("icon", note.icon)
                         .put("reminderAt", note.reminderAt)
                         .put("revisions", note.revisions.toJson())))
+                }
+            })
+            .put("templates", JSONArray().apply {
+                templates.forEach { template ->
+                    put(JSONObject().put("id", template.id).put("name", template.name).put("title", template.title)
+                        .put("body", template.body).put("category", template.category ?: JSONObject.NULL))
                 }
             })
             .put("categories", JSONArray().apply {
@@ -138,7 +146,16 @@ internal object LeafNotesTransfer {
                 deletedAt = entry.optLong("deletedAt", 0L)
             )
         }
-        return Archive(notes, categories, root.optLong("exportedAt", 0L), trash)
+        val templatesJson = root.optJSONArray("templates") ?: JSONArray()
+        val templates = (0 until templatesJson.length()).mapNotNull { index ->
+            val item = templatesJson.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id").ifBlank { return@mapNotNull null }
+            val name = item.optString("name").trim()
+            if (name.isBlank()) return@mapNotNull null
+            NoteTemplate(id, name, item.optString("title"), item.optString("body"),
+                item.optString("category").takeIf { it.isNotBlank() && it != "null" })
+        }
+        return Archive(notes, categories, root.optLong("exportedAt", 0L), trash, templates)
     }
 
     /**
@@ -149,7 +166,8 @@ internal object LeafNotesTransfer {
         currentNotes: List<Note>,
         currentCategories: List<NoteCategory>,
         archive: Archive,
-        currentTrash: List<TrashedNote> = emptyList()
+        currentTrash: List<TrashedNote> = emptyList(),
+        currentTemplates: List<NoteTemplate> = emptyList()
     ): ImportResult {
         val existingIds = currentNotes.mapTo(mutableSetOf()) { it.id }
         val incomingNotes = archive.notes.filter { existingIds.add(it.id) }
@@ -187,7 +205,8 @@ internal object LeafNotesTransfer {
             addedNotes = remappedNotes.size,
             skippedNotes = skipped,
             addedCategories = allImportedCategories.size,
-            trash = currentTrash + archive.trash.filterNot { incoming -> currentTrash.any { it.note.id == incoming.note.id } }
+            trash = currentTrash + archive.trash.filterNot { incoming -> currentTrash.any { it.note.id == incoming.note.id } },
+            templates = currentTemplates + archive.templates.filterNot { incoming -> currentTemplates.any { it.id == incoming.id } }
         )
     }
 
