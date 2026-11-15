@@ -81,6 +81,18 @@ class LeafNotesDomainTest {
     }
 
     @Test
+    fun documentExportsContainNoteContentInPortableFormats() {
+        val note = Note(id = "export-2", title = "Idées", body = "Une ligne\nDeux lignes", category = "Projet")
+        val markdown = String(LeafNotesTransfer.exportMarkdown(listOf(note)), Charsets.UTF_8)
+        val csv = String(LeafNotesTransfer.exportCsv(listOf(note)), Charsets.UTF_8)
+        val html = String(LeafNotesTransfer.exportHtml(listOf(note)), Charsets.UTF_8)
+        assertTrue(markdown.contains("# Idées"))
+        assertTrue(csv.contains("\"Projet\""))
+        assertTrue(html.contains("<h1>LeafNotes</h1>"))
+        assertTrue(html.contains("Deux lignes"))
+    }
+
+    @Test
     fun suggestionsAreDeterministicAndRemainLocal() {
         val categories = listOf(
             NoteCategory("Cours de maths", "📚", 1L),
