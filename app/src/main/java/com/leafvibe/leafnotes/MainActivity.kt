@@ -12,6 +12,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -224,7 +226,7 @@ private fun LeafNotesApp() {
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text(visible.size.toString() + " note(s)", style = MaterialTheme.typography.labelMedium)
                     if (pageNotes.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(if (query.isBlank()) "Aucune note ici. Appuie sur +." else "Aucun résultat") }
-                    else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    else LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 150.dp), modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(pageNotes, key = { it.id }) { n ->
                             Card(Modifier.fillMaxWidth().clickable { editing = n; editor = true }) {
                                 Column(Modifier.padding(12.dp)) {
