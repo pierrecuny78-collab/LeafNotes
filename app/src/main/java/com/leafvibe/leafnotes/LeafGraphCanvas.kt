@@ -52,11 +52,13 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
     val graphPrefs = remember { context.getSharedPreferences("leafnotes-graph", android.content.Context.MODE_PRIVATE) }
     var backgroundMode by remember { mutableStateOf(graphPrefs.getString("background", "Crème") ?: "Crème") }
     var nodeMode by remember { mutableStateOf(graphPrefs.getString("node", "Rond") ?: "Rond") }
+    var layoutMode by remember { mutableStateOf(graphPrefs.getString("layout", "Radial") ?: "Radial") }
+    var overlayEnabled by remember { mutableStateOf(graphPrefs.getBoolean("overlay", true)) }
     val categoryNames = remember(notes, categories) { (categories.map { it.name } + notes.map { it.category }).distinct().sorted() }
     val filteredNotes = remember(notes, activeCategory) {
         if (activeCategory == "Toutes") notes else notes.filter { it.category == activeCategory }
     }
-    val points = remember(filteredNotes) {
+    val points = remember(filteredNotes, layoutMode) {
         val groups = filteredNotes.groupBy { it.category }.toSortedMap()
         val result = mutableListOf<LeafGraphPoint>()
         val groupCount = groups.size.coerceAtLeast(1)
@@ -67,7 +69,24 @@ internal fun LeafGraphCanvasDialog(notes: List<Note>, categories: List<NoteCateg
             entry.value.forEachIndexed { noteIndex, note ->
                 val angle = (2.0 * PI * noteIndex / entry.value.size.coerceAtLeast(1)).toFloat()
                 val radius = if (entry.value.size <= 1) 0f else 0.105f + (noteIndex % 3) * 0.018f
-                result += LeafGraphPoint(note, centerX + cos(angle) * radius, centerY + sin(angle) * radius)
+                val x: Float
+                val y: Float
+                when (layoutMode) {
+                    "Colonnes" -> {
+                        x = if (groupCount <= 1) 0.5f else 0.12f + groupIndex.toFloat() / (groupCount - 1) * 0.76f
+                        y = if (entry.value.size <= 1) 0.5f else 0.12f + noteIndex.toFloat() / (entry.value.size - 1) * 0.76f
+                    }
+                    "Superposition" -> {
+                        val tightRadius = if (entry.value.size <= 1) 0f else 0.045f + (noteIndex % 4) * 0.012f
+                        x = centerX + cos(angle) * tightRadius
+                        y = centerY + sin(angle) * tightRadius
+                    }
+                    else -> {
+                        x = centerX + cos(angle) * radius
+                        y = centerY + sin(angle) * radius
+                    }
+                }
+                result += LeafGraphPoint(note, x, y)
             }
         }
         result
