@@ -50,7 +50,7 @@ import java.util.Date
 import java.util.UUID
 import android.widget.Toast
 
-internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝", val reminderAt: Long = 0L)
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList(), val icon: String = "📝", val reminderAt: Long = 0L, val revisions: List<NoteRevision> = emptyList())
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
@@ -334,6 +334,7 @@ private fun LeafNotesApp() {
         var questionDraft by remember(editing) { mutableStateOf("") }
         var answerDraft by remember(editing) { mutableStateOf("") }
         var noteIcon by remember(editing) { mutableStateOf(editing?.icon ?: "📝") }
+        var showHistory by remember(editing) { mutableStateOf(false) }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
             text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -376,6 +377,7 @@ private fun LeafNotesApp() {
                     flashcards = flashcards + Flashcard(question = questionDraft.trim(), answer = answerDraft.trim())
                     questionDraft = ""; answerDraft = ""
                 }) { Text("Ajouter à LeafQuiz") }
+                if (editing != null) OutlinedButton(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) { Text("Historique des versions (" + (editing?.revisions?.size ?: 0) + ")") }
                 Text("Enregistrer dans : " + category)
                 categories.forEach { c -> TextButton(onClick = { category = c.name }) { Text((if (c.parent == null) "" else "↳ ") + c.emoji + " " + c.name) } }
             } },
@@ -383,10 +385,39 @@ private fun LeafNotesApp() {
                 val old = editing
                 val tags = LeafNotesOrganization.normalizeTags(tagsText.split(","))
                 saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" })
-                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" }, updatedAt = System.currentTimeMillis()) else it })
+                    else notes.map {
+                    if (it.id == old.id) {
+                        val changed = old.title != title.trim() || old.body != body
+                        val revisions = if (changed) (listOf(NoteRevision(noteId = old.id, title = old.title, body = old.body)) + old.revisions).take(30) else old.revisions
+                        old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, icon = noteIcon.ifBlank { "📝" }, updatedAt = System.currentTimeMillis(), revisions = revisions)
+                    } else it
+                })
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
+    }
+
+    if (editor && showHistory) {
+        val history = editing?.revisions.orEmpty()
+        AlertDialog(
+            onDismissRequest = { showHistory = false },
+            title = { Text("Historique des versions") },
+            text = {
+                if (history.isEmpty()) Text("Aucune ancienne version. Les modifications du titre et du contenu seront conservées ici.")
+                else LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(history, key = { it.id }) { revision ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                            Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(revision.savedAt)), style = MaterialTheme.typography.labelSmall)
+                            Text(revision.title.ifBlank { "Sans titre" }, fontWeight = FontWeight.SemiBold)
+                            Text(revision.body.take(120), maxLines = 3)
+                            TextButton(onClick = { title = revision.title; body = revision.body; showHistory = false }) { Text("Restaurer dans l'éditeur") }
+                            Divider()
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Fermer") } }
+        )
     }
 
     if (reminderTarget != null) {
