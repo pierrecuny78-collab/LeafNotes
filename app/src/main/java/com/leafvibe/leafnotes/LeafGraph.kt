@@ -167,6 +167,18 @@ private fun GraphGroupCard(group: GraphGroup, onOpenNote: (Note) -> Unit) {
                             Column(Modifier.width(190.dp).padding(10.dp)) {
                                 Text(note.title.ifBlank { "Sans titre" }, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 Text(note.body.ifBlank { "Note vide" }, maxLines = 2, style = MaterialTheme.typography.bodySmall)
+                                if (note.tags.isNotEmpty() || note.checklist.isNotEmpty() || note.flashcards.isNotEmpty()) {
+                                    Text(
+                                        listOfNotNull(
+                                            note.tags.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                                            note.checklist.size.takeIf { it > 0 }?.let { "$it tâche(s)" },
+                                            note.flashcards.size.takeIf { it > 0 }?.let { "$it carte(s) Quiz" }
+                                        ).joinToString(" • "),
+                                        maxLines = 2,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(if (note.favorite) "⭐ " else "📝 ")
                                     Text("Ouvrir", style = MaterialTheme.typography.labelSmall)
