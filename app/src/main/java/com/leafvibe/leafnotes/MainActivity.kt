@@ -109,6 +109,7 @@ private fun LeafNotesApp() {
     var categories by remember { mutableStateOf(loadCategories(prefs)) }
     var darkTheme by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
     var selectedCategory by remember { mutableStateOf("Tous") }
+    var expandedCategory by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var page by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<Note?>(null) }
@@ -224,11 +225,20 @@ private fun LeafNotesApp() {
         }
     }
 
+    val selectedCategoryNames = remember(categories, selectedCategory) {
+        val names = mutableSetOf(selectedCategory)
+        var changed = true
+        while (changed) {
+            changed = false
+            categories.filter { it.parent in names }.forEach { if (names.add(it.name)) changed = true }
+        }
+        names
+    }
     val visible = notes.filter { n ->
         val categoryMatch = when (selectedCategory) {
             "Tous" -> true
             FAVORITES_FILTER -> n.favorite
-            else -> n.category == selectedCategory
+            else -> n.category in selectedCategoryNames
         }
         categoryMatch && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true) || n.tags.any { it.contains(query, true) })
     }.sortedByDescending { it.updatedAt }
@@ -276,9 +286,21 @@ private fun LeafNotesApp() {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; page = 0 }, label = { Text("Tout") }) }
                     item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; page = 0 }, label = { Text("⭐ Favoris") }) }
-                    items(categories) { category ->
-                        FilterChip(selectedCategory == category.name, { selectedCategory = category.name; page = 0 },
-                            label = { Text("${category.emoji} ${category.name}") })
+                    items(categories.filter { it.parent.isBlank() }) { category ->
+                        FilterChip(selectedCategory == category.name, {
+                            selectedCategory = category.name
+                            page = 0
+                            expandedCategory = if (expandedCategory == category.name) null else category.name
+                        }, label = { Text(category.emoji + " " + category.name) })
+                    }
+                    expandedCategory?.let { parent ->
+                        items(categories.filter { it.parent == parent }) { child ->
+                            FilterChip(selectedCategory == child.name, {
+                                selectedCategory = child.name
+                                page = 0
+                                expandedCategory = child.name
+                            }, label = { Text("↳ " + child.emoji + " " + child.name) })
+                        }
                     }
                     item { AssistChip(onClick = { categoryParent = ""; showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
                     item { AssistChip(onClick = { showCategoryManager = true }, label = { Text("Gérer les dossiers") }) }
