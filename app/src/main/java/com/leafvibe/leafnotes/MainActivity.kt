@@ -368,7 +368,7 @@ private fun LeafNotesApp() {
                 }
             }
         } else {
-            Scaffold(floatingActionButton = { FloatingActionButton(onClick = { editing = null; editor = true }) { Icon(Icons.Default.Add, contentDescription = "Nouvelle note") } }) { pad ->
+            Scaffold(floatingActionButton = { FloatingActionButton(onClick = { editing = null; editorAttachments = emptyList(); parentNoteId = null; editor = true }) { Icon(Icons.Default.Add, contentDescription = "Nouvelle note") } }) { pad ->
                 Column(Modifier.fillMaxSize().padding(pad).padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
