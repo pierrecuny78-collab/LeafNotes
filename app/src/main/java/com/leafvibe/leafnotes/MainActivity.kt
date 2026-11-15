@@ -133,6 +133,18 @@ private fun LeafNotesApp() {
             Toast.makeText(context, if (result.isSuccess) "Sauvegarde exportée." else "Échec de l'export.", Toast.LENGTH_LONG).show()
         }
     }
+    val textExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(LeafNotesTransfer.exportText(notes)) }
+                    ?: error("Impossible d'ouvrir le fichier de destination.")
+            }
+            Toast.makeText(context, if (result.isSuccess) "Export TXT terminé." else "Échec de l'export TXT.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -428,6 +440,10 @@ private fun LeafNotesApp() {
                     toolsDialog = false
                     exportLauncher.launch("LeafNotes-" + System.currentTimeMillis() + ".leafnotes")
                 }, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
+                OutlinedButton(onClick = {
+                    toolsDialog = false
+                    textExportLauncher.launch("LeafNotes-" + System.currentTimeMillis() + ".txt")
+                }, modifier = Modifier.fillMaxWidth()) { Text("Exporter les notes en TXT") }
                 OutlinedButton(onClick = {
                     toolsDialog = false
                     importLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
