@@ -59,9 +59,9 @@ class LeafNotesCoreInstrumentedTest {
         assertEquals("Local", result.notes.first().title)
         assertEquals(1, result.addedNotes)
         assertEquals(1, result.skippedNotes)
-        assertEquals("Cours (2)", result.categories.last().name)
+        assertTrue(result.categories.any { it.name == "Cours (2)" })
         assertEquals("Cours (2)", result.notes.last().category)
-        assertEquals("Cours (2)", result.categories.last().parent)
+        assertEquals("Cours (2)", result.categories.single { it.name == "Sous-cours" }.parent)
     }
 
     @Test
