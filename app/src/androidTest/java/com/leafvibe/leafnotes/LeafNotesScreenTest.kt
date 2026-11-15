@@ -28,6 +28,9 @@ class LeafNotesScreenTest {
         composeRule.onNodeWithText("Étiquettes (séparées par des virgules)").assertIsDisplayed()
         composeRule.onNodeWithText("Liste à cocher").assertIsDisplayed()
         composeRule.onNodeWithText("Suggestions locales hors ligne").assertIsDisplayed()
+        composeRule.onNodeWithText("Suggestions locales hors ligne").performClick()
+        composeRule.onNodeWithText("Suggestions locales").assertIsDisplayed()
+        composeRule.onNodeWithText("Analyse effectuée sur cet appareil, sans connexion ni envoi de tes notes.").assertIsDisplayed()
         composeRule.onNodeWithText("Nouvel élément").assertIsDisplayed()
         composeRule.onNodeWithText("Questions / réponses pour LeafQuiz").assertIsDisplayed()
     }
