@@ -115,6 +115,9 @@ private fun LeafNotesApp() {
     fun saveNotes(v: List<Note>) {
         store.saveNotes(v)
         notes = v
+        val manager = android.appwidget.AppWidgetManager.getInstance(context)
+        val widgetIds = manager.getAppWidgetIds(android.content.ComponentName(context, LeafNotesWidgetProvider::class.java))
+        if (widgetIds.isNotEmpty()) LeafNotesWidgetProvider().onUpdate(context, manager, widgetIds)
     }
     fun saveCategories(v: List<NoteCategory>) {
         store.saveCategories(v)
