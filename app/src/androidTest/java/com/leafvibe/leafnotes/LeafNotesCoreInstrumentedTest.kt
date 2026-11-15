@@ -21,10 +21,12 @@ class LeafNotesCoreInstrumentedTest {
             Note(id = "note-1", title = "Matrices", body = "Cours BTS", category = "Maths", favorite = true, updatedAt = 1234L, tags = listOf("BTS", "révision"), checklist = listOf(ChecklistItem(id = "c1", text = "Apprendre", checked = true, position = 0)), flashcards = listOf(Flashcard(id = "f1", question = "Q", answer = "A", dueAt = 123L, intervalDays = 3, repetitions = 2)))
         )
 
-        val decoded = LeafNotesTransfer.decode(LeafNotesTransfer.encode(notes, categories))
+        val trashed = listOf(TrashedNote(notes.first(), deletedAt = 2222L))
+        val decoded = LeafNotesTransfer.decode(LeafNotesTransfer.encode(notes, categories, trashed))
 
         assertEquals(notes, decoded.notes)
         assertEquals(categories, decoded.categories)
+        assertEquals(trashed, decoded.trash)
     }
 
     @Test
@@ -35,7 +37,7 @@ class LeafNotesCoreInstrumentedTest {
                 Note(id = "same", title = "Imported duplicate", body = "Must not replace", category = "Cours"),
                 Note(id = "new", title = "New", body = "Imported", category = "Cours")
             ),
-            categories = listOf(NoteCategory("Cours", "📚", 0xFF5685C5)),
+            categories = listOf(NoteCategory("Cours", "📚", 0xFF5685C5), NoteCategory("Sous-cours", "🗂️", 0xFF5685C5, "Cours")),
             exportedAt = 1L
         )
 
@@ -46,6 +48,7 @@ class LeafNotesCoreInstrumentedTest {
         assertEquals(1, result.skippedNotes)
         assertEquals("Cours (2)", result.categories.last().name)
         assertEquals("Cours (2)", result.notes.last().category)
+        assertEquals("Cours (2)", result.categories.last().parent)
     }
 
     @Test
