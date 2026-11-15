@@ -772,7 +772,7 @@ private fun LeafBackupDialog(onExport: () -> Unit, onImport: () -> Unit, onDismi
                 Text("Exporte tes notes et catégories dans un fichier JSON, puis conserve-le sur ta carte SD ou un autre support.")
                 OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
                 OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde") }
-                Text("L'import remplace la bibliothèque actuelle. Fais une sauvegarde avant de restaurer.",
+                Text("L'import fusionne les notes par identifiant et conserve les notes locales absentes du fichier.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         },
