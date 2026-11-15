@@ -28,6 +28,13 @@ class LeafNotesScreenTest {
     }
 
     @Test
+    fun leafQuizCanBeOpenedFromTheLibrary() {
+        composeRule.onNodeWithText("Quiz").performClick()
+        composeRule.onNodeWithText("LeafQuiz").assertIsDisplayed()
+        composeRule.onNodeWithText("Aucune question pour le moment").assertIsDisplayed()
+    }
+
+    @Test
     fun toolsScreenExposesBackupImportAndTrash() {
         composeRule.onNodeWithText("Outils").performClick()
         composeRule.onNodeWithText("Outils et sauvegardes").assertIsDisplayed()
