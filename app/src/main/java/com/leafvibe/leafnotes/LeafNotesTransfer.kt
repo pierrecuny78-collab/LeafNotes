@@ -17,7 +17,8 @@ internal object LeafNotesTransfer {
     data class Archive(
         val notes: List<Note>,
         val categories: List<NoteCategory>,
-        val exportedAt: Long
+        val exportedAt: Long,
+        val trash: List<TrashedNote> = emptyList()
     )
 
     data class ImportResult(
@@ -25,10 +26,11 @@ internal object LeafNotesTransfer {
         val categories: List<NoteCategory>,
         val addedNotes: Int,
         val skippedNotes: Int,
-        val addedCategories: Int
+        val addedCategories: Int,
+        val trash: List<TrashedNote> = emptyList()
     )
 
-    fun encode(notes: List<Note>, categories: List<NoteCategory>): ByteArray {
+    fun encode(notes: List<Note>, categories: List<NoteCategory>, trash: List<TrashedNote> = emptyList()): ByteArray {
         val root = JSONObject()
             .put("format", FORMAT)
             .put("version", VERSION)
@@ -45,6 +47,17 @@ internal object LeafNotesTransfer {
                         .put("tags", JSONArray(note.tags))
                         .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                         .put("flashcards", note.flashcards.toJson()))
+                }
+            })
+            .put("trash", JSONArray().apply {
+                trash.forEach { entry ->
+                    val note = entry.note
+                    put(JSONObject().put("deletedAt", entry.deletedAt).put("note", JSONObject()
+                        .put("id", note.id).put("title", note.title).put("body", note.body)
+                        .put("category", note.category).put("favorite", note.favorite).put("updatedAt", note.updatedAt)
+                        .put("tags", JSONArray(note.tags))
+                        .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
+                        .put("flashcards", note.flashcards.toJson())))
                 }
             })
             .put("categories", JSONArray().apply {
@@ -95,7 +108,25 @@ internal object LeafNotesTransfer {
                 parent = item.optString("parent").takeIf { it.isNotBlank() && it != "null" }
             )
         }
-        return Archive(notes, categories, root.optLong("exportedAt", 0L))
+        val trashJson = root.optJSONArray("trash") ?: JSONArray()
+        val trash = (0 until trashJson.length()).mapNotNull { index ->
+            val entry = trashJson.optJSONObject(index) ?: return@mapNotNull null
+            val item = entry.optJSONObject("note") ?: return@mapNotNull null
+            val id = item.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            TrashedNote(
+                note = Note(
+                    id = id, title = item.optString("title"), body = item.optString("body"),
+                    category = item.optString("category", "Nouveaux"),
+                    favorite = item.optBoolean("favorite", false),
+                    updatedAt = item.optLong("updatedAt", 0L),
+                    tags = item.optJSONArray("tags").toStringList(),
+                    checklist = item.optJSONArray("checklist").toChecklist(),
+                    flashcards = item.optJSONArray("flashcards").toFlashcards()
+                ),
+                deletedAt = entry.optLong("deletedAt", 0L)
+            )
+        }
+        return Archive(notes, categories, root.optLong("exportedAt", 0L), trash)
     }
 
     /**
@@ -105,7 +136,8 @@ internal object LeafNotesTransfer {
     fun merge(
         currentNotes: List<Note>,
         currentCategories: List<NoteCategory>,
-        archive: Archive
+        archive: Archive,
+        currentTrash: List<TrashedNote> = emptyList()
     ): ImportResult {
         val existingIds = currentNotes.mapTo(mutableSetOf()) { it.id }
         val incomingNotes = archive.notes.filter { existingIds.add(it.id) }
@@ -113,7 +145,7 @@ internal object LeafNotesTransfer {
 
         val names = currentCategories.mapTo(mutableSetOf()) { it.name.lowercase() }
         val categoryMap = linkedMapOf<String, String>()
-        val incomingCategories = archive.categories.mapNotNull { category ->
+        archive.categories.forEach { category ->
             val original = category.name
             var candidate = original
             var suffix = 2
@@ -122,7 +154,12 @@ internal object LeafNotesTransfer {
                 suffix++
             }
             categoryMap[original] = candidate
-            category.copy(name = candidate)
+        }
+        val incomingCategories = archive.categories.map { category ->
+            category.copy(
+                name = categoryMap[category.name] ?: category.name,
+                parent = category.parent?.let { categoryMap[it] ?: it }
+            )
         }
         val remappedNotes = incomingNotes.map { note ->
             note.copy(category = categoryMap[note.category] ?: note.category)
@@ -132,7 +169,8 @@ internal object LeafNotesTransfer {
             categories = currentCategories + incomingCategories,
             addedNotes = remappedNotes.size,
             skippedNotes = skipped,
-            addedCategories = incomingCategories.size
+            addedCategories = incomingCategories.size,
+            trash = currentTrash + archive.trash.filterNot { incoming -> currentTrash.any { it.note.id == incoming.note.id } }
         )
     }
 
