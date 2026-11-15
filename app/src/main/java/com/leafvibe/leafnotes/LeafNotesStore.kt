@@ -23,7 +23,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 updatedAt = item.optLong("updatedAt", 0L),
                 tags = item.optJSONArray("tags").toStringList(),
                 checklist = item.optJSONArray("checklist").toChecklist(),
-                flashcards = item.optJSONArray("flashcards").toFlashcards()
+                flashcards = item.optJSONArray("flashcards").toFlashcards(),
+                icon = item.optString("icon", "📝")
             )
         }
     }.getOrDefault(emptyList())
@@ -40,7 +41,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 .put("updatedAt", note.updatedAt)
                 .put("tags", JSONArray(note.tags))
                 .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
-                .put("flashcards", note.flashcards.toJson()))
+                .put("flashcards", note.flashcards.toJson())
+                .put("icon", note.icon))
         }
         preferences.edit().putString(KEY_NOTES, array.toString()).apply()
     }
@@ -89,7 +91,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     updatedAt = note.optLong("updatedAt", 0L),
                     tags = note.optJSONArray("tags").toStringList(),
                     checklist = note.optJSONArray("checklist").toChecklist(),
-                    flashcards = note.optJSONArray("flashcards").toFlashcards()
+                    flashcards = note.optJSONArray("flashcards").toFlashcards(),
+                    icon = note.optString("icon", "📝")
                 ),
                 deletedAt = item.optLong("deletedAt", 0L)
             )
@@ -111,7 +114,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     .put("updatedAt", note.updatedAt)
                     .put("tags", JSONArray(note.tags))
                     .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
-                    .put("flashcards", note.flashcards.toJson())))
+                    .put("flashcards", note.flashcards.toJson())
+                    .put("icon", note.icon)))
         }
         preferences.edit().putString(KEY_TRASH, array.toString()).apply()
     }
