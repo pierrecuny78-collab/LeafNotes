@@ -28,10 +28,10 @@
 - Thème clair/sombre et sauvegarde locale automatique.
 - Pièces jointes/images, dessin, audio, modèles, révisions et export PDF prévus pour les prochaines étapes.
 
-## État de la version 0.3.0 en test
+## État de la version 0.3.0 en test — branche de développement
 Le socle comprend bibliothèque, catégories hiérarchiques modifiables et colorées, notes, recherche (titre, contenu, étiquettes et checklist), favoris, pagination de cinq notes, thème, persistance locale, corbeille avec restauration, import/export, checklists et LeafQuiz hors ligne avec répétition espacée.
 Des tests JVM et instrumentés ont été ajoutés pour le format d'archive, la fusion, la corbeille, l'organisation, la persistance, LeafQuiz et les principaux écrans. Leur validation CI complète est en cours.
-Les pièces jointes/images intégrées, dessin, audio, rappels personnalisés date/heure, historique de versions, modèles, synchronisation automatique et IA hybride ne sont pas encore complets et restent à intégrer/tester.
+Les pièces jointes/images intégrées, dessin, audio, synchronisation automatique et IA hybride restent à intégrer. Les rappels personnalisés, modèles, historique texte et exports ZIP/PDF ont été ajoutés dans la branche de développement et attendent la validation complète des tests.
 
 ## Construire l'APK
 Ouvrir dans Android Studio ou lancer le workflow **Android APK** dans l'onglet Actions. Le workflow compile l'APK debug et le publie comme artefact téléchargeable en cas de succès.
