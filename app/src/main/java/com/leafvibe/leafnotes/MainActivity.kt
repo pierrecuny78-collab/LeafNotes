@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -163,7 +165,7 @@ private fun LeafNotesApp() {
                             Card(Modifier.fillMaxWidth().clickable {
                                 if (childCount > 0) { parent = c.name; categoryPage = 0 }
                                 else { selected = c.name; query = ""; page = 0; categoryLibrary = false }
-                            }) {
+                            }, colors = CardDefaults.cardColors(containerColor = Color(c.color.toInt()).copy(alpha = 0.12f))) {
                                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(c.emoji, style = MaterialTheme.typography.headlineMedium)
                                     Spacer(Modifier.width(12.dp))
@@ -264,7 +266,7 @@ private fun LeafNotesApp() {
         var answerDraft by remember(editing) { mutableStateOf("") }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") })
                 OutlinedTextField(body, { body = it }, label = { Text("Contenu") }, minLines = 4)
                 OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Étiquettes (séparées par des virgules)") }, singleLine = true)
