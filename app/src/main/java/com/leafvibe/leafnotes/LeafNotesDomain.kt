@@ -64,6 +64,8 @@ internal data class NoteRevision(
     val savedAt: Long = System.currentTimeMillis()
 )
 
+internal data class CategoryDeleteResult(val notes: List<Note>, val categories: List<NoteCategory>, val destination: String)
+
 internal object LeafNotesOrganization {
     fun normalizeTags(tags: List<String>): List<String> =
         tags.map { it.trim().removePrefix("#") }
@@ -100,6 +102,24 @@ internal object LeafNotesOrganization {
             cursor = byName[cursor]?.parent
         }
         return null
+    }
+
+    fun deleteCustomCategory(
+        categoryName: String,
+        notes: List<Note>,
+        categories: List<NoteCategory>,
+        systemNames: Set<String> = setOf("Nouveaux", "Favoris", "Idées", "Cours", "Informatique", "Archives", "Poubelle", "Corbeille")
+    ): CategoryDeleteResult? {
+        if (categoryName in systemNames) return null
+        val target = categories.firstOrNull { it.name == categoryName } ?: return null
+        val destination = target.parent ?: "Nouveaux"
+        val updatedNotes = notes.map { note ->
+            if (note.category == categoryName) note.copy(category = destination) else note
+        }
+        val updatedCategories = categories.filterNot { it.name == categoryName }.map { category ->
+            if (category.parent == categoryName) category.copy(parent = target.parent) else category
+        }
+        return CategoryDeleteResult(updatedNotes, updatedCategories, destination)
     }
 
     fun descendants(categoryName: String, categories: List<NoteCategory>): Set<String> {
