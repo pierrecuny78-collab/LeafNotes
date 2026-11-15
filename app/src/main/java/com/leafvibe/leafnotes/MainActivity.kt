@@ -467,7 +467,7 @@ private fun LeafNotesApp() {
                     items(templates, key = { it.id }) { template ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                             Text(template.name, fontWeight = FontWeight.SemiBold)
-                            Text(template.title.ifBlank { "Sans titre" })
+                            if (template.title.isNotBlank() && template.title != template.name) Text(template.title)
                             Text(template.body.take(100), maxLines = 2)
                             TextButton(onClick = {
                                 title = template.title
