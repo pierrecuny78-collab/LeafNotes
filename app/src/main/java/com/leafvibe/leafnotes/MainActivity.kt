@@ -97,6 +97,7 @@ private fun LeafNotesApp() {
     var emoji by remember { mutableStateOf("📁") }
     var categoryColor by remember { mutableStateOf("#6C9B80") }
     var categoryBeingEdited by remember { mutableStateOf<NoteCategory?>(null) }
+    var categoryDeleteTarget by remember { mutableStateOf<NoteCategory?>(null) }
     var reminderTarget by remember { mutableStateOf<Note?>(null) }
     var permissionPending by remember { mutableStateOf<Note?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -282,6 +283,13 @@ private fun LeafNotesApp() {
                                     categoryColor = String.format("#%06X", (c.color and 0xFFFFFF))
                                     categoryEditor = true
                                 }) { Icon(Icons.Default.Edit, contentDescription = "Modifier la catégorie") }
+                                val protectedCategory = c.name in setOf("Nouveaux", "Favoris", "Idées", "Cours", "Informatique", "Archives", "Poubelle", "Corbeille")
+                                IconButton(
+                                    onClick = { if (!protectedCategory) categoryDeleteTarget = c },
+                                    enabled = !protectedCategory
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = if (protectedCategory) "Catégorie système protégée" else "Supprimer la catégorie")
+                                }
                                 }
                             }
                         }
@@ -661,6 +669,42 @@ private fun LeafNotesApp() {
             if (trash.isNotEmpty()) TextButton(onClick = { saveTrash(emptyList()) }) { Text("Vider la corbeille") }
         }
     )
+
+    if (categoryDeleteTarget != null) {
+        val target = categoryDeleteTarget!!
+        val destination = target.parent ?: "Nouveaux"
+        val noteCount = notes.count { it.category == target.name }
+        val childCount = categories.count { it.parent == target.name }
+        AlertDialog(
+            onDismissRequest = { categoryDeleteTarget = null },
+            title = { Text("Supprimer « ${target.name} » ?") },
+            text = {
+                Text(
+                    "$noteCount note(s) seront déplacées vers « $destination ». " +
+                        "$childCount sous-dossier(s) seront rattachés au niveau supérieur. " +
+                        "Aucune note ne sera supprimée."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    saveNotes(notes.map { note ->
+                        if (note.category == target.name) note.copy(category = destination) else note
+                    })
+                    saveCategories(categories.filterNot { it.name == target.name }.map { category ->
+                        if (category.parent == target.name) category.copy(parent = target.parent) else category
+                    })
+                    if (selected == target.name) selected = destination
+                    if (parent == target.name) parent = target.parent
+                    categoryPage = 0
+                    categoryDeleteTarget = null
+                    Toast.makeText(context, "Catégorie supprimée. Les notes ont été conservées.", Toast.LENGTH_LONG).show()
+                }) { Text("Supprimer et déplacer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { categoryDeleteTarget = null }) { Text("Annuler") }
+            }
+        )
+    }
 
     if (categoryEditor) AlertDialog(onDismissRequest = { categoryBeingEdited = null; name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryEditor = false }, title = { Text(if (categoryBeingEdited != null) "Modifier la catégorie" else if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
