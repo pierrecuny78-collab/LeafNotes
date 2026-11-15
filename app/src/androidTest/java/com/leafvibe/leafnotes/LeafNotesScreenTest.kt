@@ -31,6 +31,16 @@ class LeafNotesScreenTest {
     }
 
     @Test
+    fun graphOffersRequestedCustomizationControls() {
+        composeRule.onNodeWithText("🕸️ Graph").performClick()
+        composeRule.onNodeWithText("Crème").assertIsDisplayed()
+        composeRule.onNodeWithText("Nuit").assertIsDisplayed()
+        composeRule.onNodeWithText("Sauge").assertIsDisplayed()
+        composeRule.onNodeWithText("Papier").assertIsDisplayed()
+        composeRule.onNodeWithText("Losange").assertIsDisplayed()
+    }
+
+    @Test
     fun leafQuizCanBeOpenedFromTheLibrary() {
         composeRule.onNodeWithText("Quiz").performClick()
         composeRule.onNodeWithText("LeafQuiz").assertIsDisplayed()
