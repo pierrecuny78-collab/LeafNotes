@@ -725,12 +725,11 @@ private fun LeafNotesApp() {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    saveNotes(notes.map { note ->
-                        if (note.category == target.name) note.copy(category = destination) else note
-                    })
-                    saveCategories(categories.filterNot { it.name == target.name }.map { category ->
-                        if (category.parent == target.name) category.copy(parent = target.parent) else category
-                    })
+                    val deletion = LeafNotesOrganization.deleteCustomCategory(target.name, notes, categories)
+                    if (deletion != null) {
+                        saveNotes(deletion.notes)
+                        saveCategories(deletion.categories)
+                    }
                     if (selected == target.name) selected = destination
                     if (parent == target.name) parent = target.parent
                     categoryPage = 0
