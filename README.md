@@ -10,6 +10,11 @@
 - Catégories personnalisables (nom et emoji).
 - Notes présentées par groupes de cinq éléments avec navigation.
 - Création, modification, favoris et mise à la corbeille des notes.
+- Étiquettes personnalisées et recherche dans les étiquettes.
+- Listes à cocher interactives dans l'éditeur.
+- Questions/réponses liées aux notes et révisions espacées avec LeafQuiz.
+- Couleurs de catégories visibles dans la bibliothèque et LeafGraph.
+- Modification et suppression des catégories avec conservation des notes.
 - Corbeille persistante avec restauration et suppression définitive.
 - Export/import de sauvegardes `.leafnotes` via le sélecteur de fichiers Android.
 - Fusion d’import sans écraser les notes locales existantes.
@@ -18,8 +23,8 @@
 - Architecture prévue pour PDF/TXT/LEAFNOTES, pièces jointes, dessin, audio, rappels et sauvegardes externes.
 
 ## État de la version 0.2.0 en test
-Le socle comprend bibliothèque, catégories hiérarchiques, notes texte, recherche, favoris, pagination de cinq notes, thème, persistance locale, corbeille avec restauration, et import/export de sauvegardes.
-Les tests instrumentés couvrent le format d'archive, la fusion sans écrasement, la corbeille, l'organisation et la persistance entre deux instances du stockage.
+Le socle comprend bibliothèque, catégories hiérarchiques modifiables et colorées, notes, recherche (titre, contenu, étiquettes et checklist), favoris, pagination de cinq notes, thème, persistance locale, corbeille avec restauration, import/export, checklists et LeafQuiz hors ligne avec répétition espacée.
+Les tests JVM et instrumentés couvrent le format d'archive, la fusion sans écrasement, la corbeille, l'organisation, la persistance des étiquettes/checklists/cartes de quiz, la répétition espacée et les principaux écrans.
 Les fonctions avancées (éditeur riche, pièces jointes, dessin, audio, rappels, modèles et révisions) restent planifiées tant qu'elles ne sont pas intégrées à l'interface et validées.
 
 ## Construire l'APK
