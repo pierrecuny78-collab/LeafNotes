@@ -24,7 +24,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 tags = item.optJSONArray("tags").toStringList(),
                 checklist = item.optJSONArray("checklist").toChecklist(),
                 flashcards = item.optJSONArray("flashcards").toFlashcards(),
-                icon = item.optString("icon", "📝")
+                icon = item.optString("icon", "📝"),
+                reminderAt = item.optLong("reminderAt", 0L)
             )
         }
     }.getOrDefault(emptyList())
@@ -42,7 +43,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 .put("tags", JSONArray(note.tags))
                 .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                 .put("flashcards", note.flashcards.toJson())
-                .put("icon", note.icon))
+                .put("icon", note.icon)
+                .put("reminderAt", note.reminderAt))
         }
         preferences.edit().putString(KEY_NOTES, array.toString()).apply()
     }
@@ -92,7 +94,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     tags = note.optJSONArray("tags").toStringList(),
                     checklist = note.optJSONArray("checklist").toChecklist(),
                     flashcards = note.optJSONArray("flashcards").toFlashcards(),
-                    icon = note.optString("icon", "📝")
+                    icon = note.optString("icon", "📝"),
+                    reminderAt = note.optLong("reminderAt", 0L)
                 ),
                 deletedAt = item.optLong("deletedAt", 0L)
             )
@@ -115,7 +118,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     .put("tags", JSONArray(note.tags))
                     .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                     .put("flashcards", note.flashcards.toJson())
-                    .put("icon", note.icon)))
+                    .put("icon", note.icon)
+                    .put("reminderAt", note.reminderAt)))
         }
         preferences.edit().putString(KEY_TRASH, array.toString()).apply()
     }
