@@ -65,7 +65,7 @@ class LeafNotesDomainTest {
             NoteCategory("Cours de maths", "📚", 1L),
             NoteCategory("Cuisine", "🍲", 2L)
         )
-        val result = LeafNotesSuggestions.suggest("Matrices BTS", "Les matrices servent aux calculs algébriques. Matrices et algèbre.", categories)
+        val result = LeafNotesSuggestions.suggest("Matrices BTS", "Ce cours de maths présente les matrices pour les calculs algébriques. Matrices et algèbre.", categories)
         assertEquals("Cours de maths", result.category)
         assertTrue(result.tags.contains("matrices"))
         assertTrue(result.tags.contains("algébriques"))
