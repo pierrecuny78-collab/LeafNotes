@@ -120,6 +120,10 @@ private fun LeafNotesApp() {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else reminderTarget = note
     }
+    fun cancelReminder(note: Note) {
+        WorkManager.getInstance(context).cancelUniqueWork("leafnotes-reminder-" + note.id)
+        saveNotes(notes.map { if (it.id == note.id) it.copy(reminderAt = 0L) else it })
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -299,7 +303,10 @@ private fun LeafNotesApp() {
                                         }) { Icon(Icons.Default.Delete, contentDescription = "Mettre à la corbeille") }
                                     }
                                     Text(n.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (n.reminderAt > 0L) Text("⏰ Rappel : " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.reminderAt)), style = MaterialTheme.typography.labelSmall)
+                                    if (n.reminderAt > 0L) {
+                                        Text("⏰ Rappel : " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.reminderAt)), style = MaterialTheme.typography.labelSmall)
+                                        TextButton(onClick = { cancelReminder(n) }) { Text("Annuler le rappel") }
+                                    }
                                     Text(n.category + " • " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(n.updatedAt)),
                                         style = MaterialTheme.typography.labelSmall)
                                     TextButton(onClick = { requestReminder(n) }) { Text("Programmer un rappel") }
@@ -489,7 +496,7 @@ private fun LeafNotesApp() {
         }
     )
 
-    if (categoryEditor) AlertDialog(onDismissRequest = { categoryEditor = false }, title = { Text(if (categoryBeingEdited != null) "Modifier la catégorie" else if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
+    if (categoryEditor) AlertDialog(onDismissRequest = { categoryBeingEdited = null; name = ""; emoji = "📁"; categoryColor = "#6C9B80"; categoryEditor = false }, title = { Text(if (categoryBeingEdited != null) "Modifier la catégorie" else if (parent == null) "Nouvelle catégorie" else "Nouveau sous-dossier") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Nom") }, singleLine = true)
             OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true)
