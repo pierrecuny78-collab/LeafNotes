@@ -190,7 +190,7 @@ private fun LeafNotesApp() {
             FAVORITES_FILTER -> n.favorite
             else -> n.category == selectedCategory
         }
-        categoryMatch && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true))
+        categoryMatch && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true) || n.tags.any { it.contains(query, true) })
     }.sortedByDescending { it.updatedAt }
     val pageCount = maxOf(1, (visible.size + 4) / 5)
     val safePage = page.coerceIn(0, pageCount - 1)
@@ -318,10 +318,10 @@ private fun LeafNotesApp() {
         saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = whenAt) else it })
         reminderTarget = null
     }
-    if (showEditor) NoteEditorDialog(editing, categories, notes, { showEditor = false }) { title, body, category, iconUri, mediaUris, parentNoteId ->
+    if (showEditor) NoteEditorDialog(editing, categories, notes, { showEditor = false }) { title, body, category, iconUri, mediaUris, parentNoteId, tags ->
         val old = editing
         val changed = if (old == null) notes + Note(title = title, body = body, category = category,
-            iconUri = iconUri, mediaUris = mediaUris, parentNoteId = parentNoteId)
+            iconUri = iconUri, mediaUris = mediaUris, parentNoteId = parentNoteId, tags = tags)
         else notes.map { note ->
             if (note.id == old.id) {
                 val snapshot = JSONObject().put("title", old.title).put("body", old.body)
@@ -329,7 +329,7 @@ private fun LeafNotesApp() {
                     .put("mediaUris", JSONArray().apply { old.mediaUris.forEach { put(it) } })
                     .put("updatedAt", old.updatedAt).toString()
                 old.copy(title = title, body = body, category = category, iconUri = iconUri,
-                    mediaUris = mediaUris, parentNoteId = parentNoteId,
+                    mediaUris = mediaUris, parentNoteId = parentNoteId, tags = tags,
                     history = (old.history + snapshot).takeLast(30), updatedAt = System.currentTimeMillis())
             } else note
         }
@@ -415,7 +415,7 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
 @Composable
 private fun NoteEditorDialog(
     initial: Note?, categories: List<NoteCategory>, allNotes: List<Note>, onDismiss: () -> Unit,
-    onSave: (String, String, String, String, List<String>, String) -> Unit
+    onSave: (String, String, String, String, List<String>, String, List<String>) -> Unit
 ) {
     val context = LocalContext.current
     var title by remember(initial) { mutableStateOf(initial?.title.orEmpty()) }
@@ -424,6 +424,7 @@ private fun NoteEditorDialog(
     var iconUri by remember(initial) { mutableStateOf(initial?.iconUri.orEmpty()) }
     var mediaUris by remember(initial) { mutableStateOf(initial?.mediaUris ?: emptyList()) }
     var parentNoteId by remember(initial) { mutableStateOf(initial?.parentNoteId.orEmpty()) }
+    var tagsText by remember(initial) { mutableStateOf(initial?.tags?.joinToString(", ").orEmpty()) }
     val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -442,6 +443,7 @@ private fun NoteEditorDialog(
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") }, singleLine = true)
                 OutlinedTextField(body, { body = it }, label = { Text("Écris tes idées…") }, minLines = 5)
+                OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Tags (séparés par des virgules)") })
                 Text("Catégorie", style = MaterialTheme.typography.labelLarge)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(categories) { c ->
@@ -477,7 +479,7 @@ private fun NoteEditorDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(title.trim(), body.trim(), category, iconUri, mediaUris, parentNoteId) }) { Text("Enregistrer") } },
+        confirmButton = { TextButton(onClick = { onSave(title.trim(), body.trim(), category, iconUri, mediaUris, parentNoteId, tagsText.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct()) }) { Text("Enregistrer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } })
 }
 @Composable
