@@ -98,7 +98,7 @@ private fun LeafNotesApp() {
         if (uri != null) {
             val result = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use {
-                    it.write(LeafNotesTransfer.encode(notes, categories))
+                    it.write(LeafNotesTransfer.encode(notes, categories, trash))
                 } ?: error("Impossible d'ouvrir le fichier de destination.")
             }
             Toast.makeText(context, if (result.isSuccess) "Sauvegarde exportée." else "Échec de l'export.", Toast.LENGTH_LONG).show()
@@ -112,9 +112,10 @@ private fun LeafNotesApp() {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: error("Impossible de lire le fichier sélectionné.")
                 val archive = LeafNotesTransfer.decode(bytes)
-                val merged = LeafNotesTransfer.merge(notes, categories, archive)
+                val merged = LeafNotesTransfer.merge(notes, categories, archive, trash)
                 saveNotes(merged.notes)
                 saveCategories(merged.categories)
+                saveTrash(merged.trash)
                 merged
             }
             Toast.makeText(context, result.fold(
