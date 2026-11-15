@@ -56,7 +56,9 @@ internal object LeafNotesTransfer {
                         .put("flashcards", note.flashcards.toJson())
                         .put("icon", note.icon)
                         .put("reminderAt", note.reminderAt)
-                        .put("revisions", note.revisions.toRevisionsJson()))
+                        .put("revisions", note.revisions.toRevisionsJson())
+                        .put("attachments", note.attachments.toAttachmentsJson())
+                        .put("parentNoteId", note.parentNoteId ?: JSONObject.NULL))
                 }
             })
             .put("trash", JSONArray().apply {
@@ -70,7 +72,9 @@ internal object LeafNotesTransfer {
                         .put("flashcards", note.flashcards.toJson())
                         .put("icon", note.icon)
                         .put("reminderAt", note.reminderAt)
-                        .put("revisions", note.revisions.toRevisionsJson())))
+                        .put("revisions", note.revisions.toRevisionsJson())
+                        .put("attachments", note.attachments.toAttachmentsJson())
+                        .put("parentNoteId", note.parentNoteId ?: JSONObject.NULL)))
                 }
             })
             .put("templates", JSONArray().apply {
@@ -150,7 +154,9 @@ internal object LeafNotesTransfer {
                 flashcards = item.optJSONArray("flashcards").toFlashcards(),
                 icon = item.optString("icon", "📝"),
                 reminderAt = item.optLong("reminderAt", 0L),
-                revisions = item.optJSONArray("revisions").toRevisions(id)
+                revisions = item.optJSONArray("revisions").toRevisions(id),
+                attachments = item.optJSONArray("attachments").toAttachments(),
+                parentNoteId = item.optString("parentNoteId").takeIf { it.isNotBlank() && it != "null" }
             )
         }
 
@@ -182,7 +188,9 @@ internal object LeafNotesTransfer {
                     flashcards = item.optJSONArray("flashcards").toFlashcards(),
                     icon = item.optString("icon", "📝"),
                     reminderAt = item.optLong("reminderAt", 0L),
-                    revisions = item.optJSONArray("revisions").toRevisions(id)
+                    revisions = item.optJSONArray("revisions").toRevisions(id),
+                    attachments = item.optJSONArray("attachments").toAttachments(),
+                    parentNoteId = item.optString("parentNoteId").takeIf { it.isNotBlank() && it != "null" }
                 ),
                 deletedAt = entry.optLong("deletedAt", 0L)
             )
@@ -362,6 +370,29 @@ private fun JSONArray?.toFlashcards(): List<Flashcard> {
             dueAt = item.optLong("dueAt", 0L),
             intervalDays = item.optInt("intervalDays", 0),
             repetitions = item.optInt("repetitions", 0)
+        )
+    }
+}
+
+private fun List<NoteAttachment>.toAttachmentsJson(): JSONArray = JSONArray().apply {
+    forEach { attachment ->
+        put(JSONObject().put("id", attachment.id).put("uri", attachment.uri)
+            .put("mimeType", attachment.mimeType).put("displayName", attachment.displayName)
+            .put("sizeBytes", attachment.sizeBytes))
+    }
+}
+
+private fun JSONArray?.toAttachments(): List<NoteAttachment> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index ->
+        val item = optJSONObject(index) ?: return@mapNotNull null
+        val uri = item.optString("uri").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        NoteAttachment(
+            id = item.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+            uri = uri,
+            mimeType = item.optString("mimeType", "application/octet-stream"),
+            displayName = item.optString("displayName", "Fichier joint"),
+            sizeBytes = item.optLong("sizeBytes", 0L)
         )
     }
 }
