@@ -35,7 +35,7 @@ import java.util.Date
 import java.util.UUID
 import android.widget.Toast
 
-internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList())
+internal data class Note(val id: String = UUID.randomUUID().toString(), val title: String, val body: String, val category: String, val favorite: Boolean = false, val updatedAt: Long = System.currentTimeMillis(), val tags: List<String> = emptyList(), val checklist: List<ChecklistItem> = emptyList(), val flashcards: List<Flashcard> = emptyList())
 internal data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String? = null)
 private const val FAVORITES_FILTER = "__leafnotes_favorites_filter__"
 private val starterCategories = listOf(
@@ -67,6 +67,7 @@ private fun LeafNotesApp() {
     var editor by remember { mutableStateOf(false) }
     var categoryLibrary by remember { mutableStateOf(false) }
     var graphOpen by remember { mutableStateOf(false) }
+    var quizOpen by remember { mutableStateOf(false) }
     var parent by remember { mutableStateOf<String?>(null) }
     var categoryPage by remember { mutableIntStateOf(0) }
     var categoryEditor by remember { mutableStateOf(false) }
@@ -130,7 +131,9 @@ private fun LeafNotesApp() {
     val pageNotes = visible.drop(safePage * 5).take(5)
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-        if (graphOpen) {
+        if (quizOpen) {
+            LeafQuizScreen(notes = notes, onUpdateNote = { updated -> saveNotes(notes.map { if (it.id == updated.id) updated else it }) }, onClose = { quizOpen = false })
+        } else if (graphOpen) {
             LeafGraphScreen(
                 notes = notes,
                 categories = categories,
@@ -201,6 +204,7 @@ private fun LeafNotesApp() {
                             Icon(Icons.Default.Folder, null); Text("Catégories")
                         }
                         TextButton(onClick = { graphOpen = true }) { Text("🕸️ Graph") }
+                        TextButton(onClick = { quizOpen = true }) { Text("Quiz") }
                         TextButton(onClick = { toolsDialog = true }) { Text("Outils") }
                         IconButton(onClick = { dark = !dark; prefs.edit().putBoolean("dark", dark).apply() }) { Text(if (dark) "☀️" else "🌙") }
                     }
@@ -255,6 +259,9 @@ private fun LeafNotesApp() {
         var tagsText by remember(editing) { mutableStateOf(editing?.tags?.joinToString(", ").orEmpty()) }
         var checklist by remember(editing) { mutableStateOf(editing?.checklist ?: emptyList()) }
         var checklistDraft by remember(editing) { mutableStateOf("") }
+        var flashcards by remember(editing) { mutableStateOf(editing?.flashcards ?: emptyList()) }
+        var questionDraft by remember(editing) { mutableStateOf("") }
+        var answerDraft by remember(editing) { mutableStateOf("") }
         var category by remember(editing) { mutableStateOf(editing?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
         AlertDialog(onDismissRequest = { editor = false }, title = { Text(if (editing == null) "Nouvelle note" else "Modifier la note") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -280,14 +287,30 @@ private fun LeafNotesApp() {
                         }
                     }) { Icon(Icons.Default.Add, contentDescription = "Ajouter à la liste") }
                 }
+                Text("Questions / réponses pour LeafQuiz", style = MaterialTheme.typography.titleSmall)
+                flashcards.forEach { card ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text("Q : " + card.question, fontWeight = FontWeight.SemiBold)
+                            Text("R : " + card.answer)
+                            TextButton(onClick = { flashcards = flashcards.filterNot { it.id == card.id } }) { Text("Retirer") }
+                        }
+                    }
+                }
+                OutlinedTextField(questionDraft, { questionDraft = it }, label = { Text("Nouvelle question") }, singleLine = true)
+                OutlinedTextField(answerDraft, { answerDraft = it }, label = { Text("Réponse") }, minLines = 2)
+                TextButton(enabled = questionDraft.isNotBlank() && answerDraft.isNotBlank(), onClick = {
+                    flashcards = flashcards + Flashcard(question = questionDraft.trim(), answer = answerDraft.trim())
+                    questionDraft = ""; answerDraft = ""
+                }) { Text("Ajouter à LeafQuiz") }
                 Text("Enregistrer dans : " + category)
                 categories.forEach { c -> TextButton(onClick = { category = c.name }) { Text((if (c.parent == null) "" else "↳ ") + c.emoji + " " + c.name) } }
             } },
             confirmButton = { TextButton(onClick = {
                 val old = editing
                 val tags = LeafNotesOrganization.normalizeTags(tagsText.split(","))
-                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist)
-                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, updatedAt = System.currentTimeMillis()) else it })
+                saveNotes(if (old == null) notes + Note(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards)
+                    else notes.map { if (it.id == old.id) old.copy(title = title.trim(), body = body, category = category, tags = tags, checklist = checklist, flashcards = flashcards, updatedAt = System.currentTimeMillis()) else it })
                 editor = false
             }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editor = false }) { Text("Annuler") } })
