@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -82,6 +83,9 @@ private fun LeafNotesApp() {
     var categoryLibrary by remember { mutableStateOf(false) }
     var graphOpen by remember { mutableStateOf(false) }
     var quizOpen by remember { mutableStateOf(false) }
+    var swipeOpen by remember { mutableStateOf(false) }
+    var learningOpen by remember { mutableStateOf(false) }
+    var settingsDialog by remember { mutableStateOf(false) }
     var parent by remember { mutableStateOf<String?>(null) }
     var categoryPage by remember { mutableIntStateOf(0) }
     var categoryEditor by remember { mutableStateOf(false) }
@@ -159,7 +163,11 @@ private fun LeafNotesApp() {
     val pageNotes = visible.drop(safePage * 5).take(5)
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-        if (quizOpen) {
+        if (swipeOpen) {
+            LeafSwipeScreen(notes = notes, onOpenNote = { note -> editing = note; editor = true; swipeOpen = false }, onClose = { swipeOpen = false })
+        } else if (learningOpen) {
+            LeafLearningScreen(notes = notes, onClose = { learningOpen = false })
+        } else if (quizOpen) {
             LeafQuizScreen(notes = notes, onUpdateNote = { updated -> saveNotes(notes.map { if (it.id == updated.id) updated else it }) }, onClose = { quizOpen = false })
         } else if (graphOpen) {
             LeafGraphScreen(
@@ -240,8 +248,9 @@ private fun LeafNotesApp() {
                         }
                         TextButton(onClick = { graphOpen = true }) { Text("🕸️ Graph") }
                         TextButton(onClick = { quizOpen = true }) { Text("Quiz") }
-                        TextButton(onClick = { toolsDialog = true }) { Text("Outils") }
+                        TextButton(onClick = { toolsDialog = true }) { Text("LeafBackup") }
                         IconButton(onClick = { dark = !dark; prefs.edit().putBoolean("dark", dark).apply() }) { Text(if (dark) "☀️" else "🌙") }
+                        IconButton(onClick = { settingsDialog = true }) { Icon(Icons.Default.Settings, contentDescription = "Paramètres et aide") }
                     }
                     OutlinedTextField(query, { query = it; page = 0 }, Modifier.fillMaxWidth(), singleLine = true,
                         placeholder = { Text("Rechercher dans tes notes…") }, leadingIcon = { Icon(Icons.Default.Search, null) })
@@ -251,6 +260,11 @@ private fun LeafNotesApp() {
                         FilterChip(selected == FAVORITES_FILTER, { selected = FAVORITES_FILTER; page = 0 }, label = { Text("⭐ Favoris") })
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { parent = null; categoryLibrary = true }) { Text("Voir les catégories") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AssistChip(onClick = { swipeOpen = true }, label = { Text("LeafSwipe") })
+                        AssistChip(onClick = { learningOpen = true }, label = { Text("LeafLearning") })
+                        AssistChip(onClick = { quizOpen = true }, label = { Text("LeafQuiz") })
                     }
                     Text(if (selected == "Tous") "Ma bibliothèque" else if (selected == FAVORITES_FILTER) "Favoris" else selected,
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -387,6 +401,22 @@ private fun LeafNotesApp() {
             dismissButton = { TextButton(onClick = { reminderTarget = null }) { Text("Annuler") } }
         )
     }
+
+    if (settingsDialog) AlertDialog(
+        onDismissRequest = { settingsDialog = false },
+        title = { Text("Paramètres et aide LeafNotes") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("LeafNotes fonctionne localement et hors ligne. Les notes, dossiers, listes, cartes et rappels sont conservés sur cet appareil.")
+                Text("LeafGraph : carte interactive, filtre par catégorie, zoom, formes et fonds personnalisables, liens [[Titre]].")
+                Text("LeafSwipe : révision rapide par cartes. LeafLearning : reformulation active. LeafQuiz : questions/réponses avec répétition espacée.")
+                Text("LeafBackup : export/import de la bibliothèque et de la corbeille sans écraser les notes locales existantes.")
+                Text("IA hybride et synchronisation automatique entre appareils restent des évolutions planifiées, non activées dans cette APK.")
+                OutlinedButton(onClick = { settingsDialog = false; toolsDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Ouvrir LeafBackup") }
+            }
+        },
+        confirmButton = { TextButton(onClick = { settingsDialog = false }) { Text("Fermer") } }
+    )
 
     if (toolsDialog) AlertDialog(
         onDismissRequest = { toolsDialog = false },
