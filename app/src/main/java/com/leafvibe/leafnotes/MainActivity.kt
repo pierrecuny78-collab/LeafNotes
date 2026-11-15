@@ -817,32 +817,91 @@ private fun LeafLearningDialog(notes: List<Note>, onDismiss: () -> Unit) {
 
 @Composable
 private fun LeafQuizDialog(notes: List<Note>, onDismiss: () -> Unit) {
+    var quizNotes by remember(notes) { mutableStateOf(notes.shuffled()) }
     var index by remember(notes) { mutableIntStateOf(0) }
-    var answerVisible by remember { mutableStateOf(false) }
+    var selectedAnswer by remember { mutableStateOf<String?>(null) }
     var correct by remember { mutableIntStateOf(0) }
     var wrong by remember { mutableIntStateOf(0) }
-    val note = notes.getOrNull(index.coerceIn(0, (notes.size - 1).coerceAtLeast(0)))
+    val note = quizNotes.getOrNull(index)
+    val options = remember(note, quizNotes) {
+        if (note == null) emptyList()
+        else (listOf(note.body) + quizNotes.filter { it.id != note.id }.map { it.body })
+            .filter { it.isNotBlank() }.distinct().shuffled().take(4)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("LeafQuiz · Quiz à partir de tes notes") },
+        title = { Text("LeafQuiz · Quiz avancé") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (note == null) Text("Ajoute des notes pour générer tes premières questions.")
-                else {
-                    Text("Question " + (index + 1) + " / " + notes.size, color = MaterialTheme.colorScheme.primary)
-                    Text(note.title.ifBlank { "Quel est le sujet de cette note ?" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    if (answerVisible) Text(note.body.ifBlank { "Aucune réponse enregistrée." })
-                    else Text("Essaie de répondre sans consulter ton cours.")
-                    Button(onClick = { answerVisible = !answerVisible }) { Text(if (answerVisible) "Masquer" else "Voir la réponse") }
-                    if (answerVisible) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { wrong++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Incorrect") }
-                        Button(onClick = { correct++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Correct") }
+                if (note == null) {
+                    Text("Ajoute des notes pour générer tes premières questions.")
+                    Text("Score : " + correct + " bonne(s) réponse(s), " + wrong + " erreur(s).")
+                } else {
+                    Text("Question " + (index + 1) + " / " + quizNotes.size,
+                        color = MaterialTheme.colorScheme.primary)
+                    LinearProgressIndicator(
+                        progress = (index + 1).toFloat() / quizNotes.size.coerceAtLeast(1),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(note.title.ifBlank { "Quel est le sujet de cette note ?" },
+                        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (options.size >= 2) {
+                        Text("Choisis la bonne réponse :")
+                        options.forEach { option ->
+                            OutlinedButton(
+                                onClick = {
+                                    if (selectedAnswer == null) {
+                                        selectedAnswer = option
+                                        if (option == note.body) correct++ else wrong++
+                                    }
+                                },
+                                enabled = selectedAnswer == null,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(option.take(120)) }
+                        }
+                        selectedAnswer?.let { answer ->
+                            Text(
+                                if (answer == note.body) "Bonne réponse !" else "Pas tout à fait. Réponse : " + note.body,
+                                color = if (answer == note.body) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    } else {
+                        Text(if (selectedAnswer == null) "Réfléchis puis révèle la réponse." else note.body)
+                        Button(onClick = { selectedAnswer = note.body }) {
+                            Text(if (selectedAnswer == null) "Voir la réponse" else "Réponse affichée")
+                        }
+                        if (selectedAnswer != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { wrong++ ; selectedAnswer = "skip" }) { Text("À revoir") }
+                                Button(onClick = { correct++ ; selectedAnswer = "mastered" }) { Text("Je maîtrise") }
+                            }
+                        }
                     }
-                    Text("Réponses correctes : " + correct + " · À retravailler : " + wrong, style = MaterialTheme.typography.labelMedium)
+                    Text("Score : " + correct + " correcte(s) · " + wrong + " à revoir",
+                        style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { index = (index - 1).coerceAtLeast(0); selectedAnswer = null },
+                            enabled = index > 0
+                        ) { Text("Précédente") }
+                        Button(
+                            onClick = { index = (index + 1).coerceAtMost(quizNotes.lastIndex); selectedAnswer = null },
+                            enabled = index < quizNotes.lastIndex
+                        ) { Text(if (index == quizNotes.lastIndex) "Fin" else "Suivante") }
+                    }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
+        confirmButton = {
+            TextButton(onClick = {
+                quizNotes = notes.shuffled()
+                index = 0
+                selectedAnswer = null
+                correct = 0
+                wrong = 0
+            }) { Text("Nouveau mélange") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Terminer") } }
     )
 }
 
