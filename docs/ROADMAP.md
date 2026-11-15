@@ -15,6 +15,11 @@ Cette feuille de route distingue les fonctions intégrées à l'interface, celle
 - [x] LeafBackup : export/import .leafnotes, fusion sans écrasement des notes locales et conservation de la corbeille
 - [x] Réparation des catégories manquantes référencées par des notes importées
 - [x] Export TXT incluant tags, tâches et cartes Q/R
+- [x] Export PDF paginé
+- [x] Export ZIP contenant archive `.leafnotes` et export texte
+- [x] Modèles réutilisables avec persistance et sauvegarde
+- [x] Historique des versions du titre/contenu (30 snapshots) et restauration dans l'éditeur
+- [x] Rappels personnalisés par date et heure
 - [x] LeafGraph interactif : filtre par catégorie, fonds Crème/Nuit/Sauge/Papier, formes Rond/Carré/Losange, zoom, déplacement, liens [[Titre]] avec flèches
 - [x] Préférences du fond et de la forme de LeafGraph persistées localement
 - [x] LeafSwipe : révision par cartes et geste horizontal
@@ -34,8 +39,8 @@ Cette feuille de route distingue les fonctions intégrées à l'interface, celle
 - [ ] Enregistrement audio et lecture
 - [ ] Mise en forme enrichie : titres, gras, listes, citations et liens
 - [ ] Modèles de notes réutilisables
-- [ ] Historique des révisions persistant, annulation et rétablissement
-- [ ] Rappels personnalisés date/heure, répétition, modification et annulation depuis l'éditeur
+- [ ] Historique complet des révisions (checklists, tags, pièces jointes), annulation et rétablissement
+- [ ] Rappels répétitifs, modification et annulation depuis l'éditeur
 
 ## Organisation avancée
 
@@ -45,7 +50,8 @@ Cette feuille de route distingue les fonctions intégrées à l'interface, celle
 - [ ] Sous-notes et backlinks
 - [ ] Vues intelligentes : récemment modifiées, épinglées, archivées, tâches à faire
 - [ ] Export sélectif et ZIP avec manifeste, pièces jointes et empreintes SHA-256
-- [ ] Export PDF et Markdown
+- [ ] Export Markdown
+- [ ] Export ZIP avec pièces jointes binaires et manifeste SHA-256
 
 ## Modules Leaf
 
