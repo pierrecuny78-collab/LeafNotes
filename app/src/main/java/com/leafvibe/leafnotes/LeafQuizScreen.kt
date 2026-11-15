@@ -42,6 +42,7 @@ internal fun LeafQuizScreen(
     val now = System.currentTimeMillis()
     val allCards = notes.flatMap { note -> note.flashcards.map { note to it } }
     val dueCards = allCards.filter { it.second.dueAt <= now }
+    val masteredCards = allCards.count { it.second.repetitions > 0 }
     val current = dueCards.firstOrNull()
 
     Scaffold(
@@ -62,7 +63,7 @@ internal fun LeafQuizScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "${dueCards.size} carte(s) à réviser • ${allCards.size} au total",
+                "${dueCards.size} carte(s) à réviser • ${allCards.size} au total • ${masteredCards} déjà travaillée(s)",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
