@@ -47,7 +47,8 @@ internal object LeafNotesTransfer {
                         .put("tags", JSONArray(note.tags))
                         .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                         .put("flashcards", note.flashcards.toJson())
-                        .put("icon", note.icon))
+                        .put("icon", note.icon)
+                        .put("reminderAt", note.reminderAt))
                 }
             })
             .put("trash", JSONArray().apply {
@@ -59,7 +60,8 @@ internal object LeafNotesTransfer {
                         .put("tags", JSONArray(note.tags))
                         .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                         .put("flashcards", note.flashcards.toJson())
-                        .put("icon", note.icon)))
+                        .put("icon", note.icon)
+                        .put("reminderAt", note.reminderAt)))
                 }
             })
             .put("categories", JSONArray().apply {
@@ -124,7 +126,8 @@ internal object LeafNotesTransfer {
                     tags = item.optJSONArray("tags").toStringList(),
                     checklist = item.optJSONArray("checklist").toChecklist(),
                     flashcards = item.optJSONArray("flashcards").toFlashcards(),
-                    icon = item.optString("icon", "📝")
+                    icon = item.optString("icon", "📝"),
+                    reminderAt = item.optLong("reminderAt", 0L)
                 ),
                 deletedAt = entry.optLong("deletedAt", 0L)
             )
