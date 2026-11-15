@@ -45,7 +45,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                 .put("flashcards", note.flashcards.toJson())
                 .put("icon", note.icon)
-                .put("reminderAt", note.reminderAt))
+                .put("reminderAt", note.reminderAt)
+                .put("revisions", note.revisions.toJson()))
         }
         preferences.edit().putString(KEY_NOTES, array.toString()).apply()
     }
