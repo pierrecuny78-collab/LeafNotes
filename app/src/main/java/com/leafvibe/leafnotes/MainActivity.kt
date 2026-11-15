@@ -100,6 +100,8 @@ private fun LeafNotesApp() {
     var categoryColor by remember { mutableStateOf("#6C9B80") }
     var categoryBeingEdited by remember { mutableStateOf<NoteCategory?>(null) }
     var categoryDeleteTarget by remember { mutableStateOf<NoteCategory?>(null) }
+    var categoryExportTarget by remember { mutableStateOf<NoteCategory?>(null) }
+    var categoryExportDialog by remember { mutableStateOf(false) }
     var reminderTarget by remember { mutableStateOf<Note?>(null) }
     var permissionPending by remember { mutableStateOf<Note?>(null) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -215,6 +217,44 @@ private fun LeafNotesApp() {
         }
     }
 
+    fun categoryExportNames(target: NoteCategory): Set<String> =
+        LeafNotesOrganization.descendants(target.name, categories) + target.name
+
+    fun writeCategoryExport(uri: android.net.Uri?, bytes: ByteArray, label: String) {
+        if (uri == null) return
+        val result = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                ?: error("Impossible d'ouvrir le fichier de destination.")
+        }
+        Toast.makeText(context, if (result.isSuccess) "Export $label terminé." else "Échec de l'export $label.", Toast.LENGTH_LONG).show()
+    }
+
+    val categoryMarkdownLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+        categoryExportTarget?.let { target -> writeCategoryExport(uri, LeafNotesTransfer.exportMarkdown(notes.filter { it.category in categoryExportNames(target) }), "Markdown") }
+    }
+    val categoryCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        categoryExportTarget?.let { target -> writeCategoryExport(uri, LeafNotesTransfer.exportCsv(notes.filter { it.category in categoryExportNames(target) }), "CSV") }
+    }
+    val categoryHtmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+        categoryExportTarget?.let { target -> writeCategoryExport(uri, LeafNotesTransfer.exportHtml(notes.filter { it.category in categoryExportNames(target) }), "HTML") }
+    }
+    val categoryPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val target = categoryExportTarget
+        if (uri != null && target != null) {
+            val scoped = notes.filter { it.category in categoryExportNames(target) }
+            val result = runCatching { LeafNotesPdf.write(context, uri, scoped) }
+            Toast.makeText(context, if (result.isSuccess) "Export PDF terminé." else "Échec de l'export PDF.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val categoryJsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        categoryExportTarget?.let { target ->
+            val names = categoryExportNames(target)
+            val scopedNotes = notes.filter { it.category in names }
+            val scopedCategories = categories.filter { it.name in names }
+            writeCategoryExport(uri, LeafNotesTransfer.encode(scopedNotes, scopedCategories, trash.filter { it.note.category in names }, templates.filter { it.category in names }), "JSON")
+        }
+    }
+
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -302,6 +342,9 @@ private fun LeafNotesApp() {
                                     categoryColor = String.format("#%06X", (c.color and 0xFFFFFF))
                                     categoryEditor = true
                                 }) { Icon(Icons.Default.Edit, contentDescription = "Modifier la catégorie") }
+                                IconButton(onClick = { categoryExportTarget = c; categoryExportDialog = true }) {
+                                    Icon(Icons.Default.Share, contentDescription = "Exporter cette catégorie")
+                                }
                                 val protectedCategory = c.name in setOf("Nouveaux", "Favoris", "Idées", "Cours", "Informatique", "Archives", "Poubelle", "Corbeille")
                                 IconButton(
                                     onClick = { if (!protectedCategory) categoryDeleteTarget = c },
@@ -707,6 +750,25 @@ private fun LeafNotesApp() {
             if (trash.isNotEmpty()) TextButton(onClick = { saveTrash(emptyList()) }) { Text("Vider la corbeille") }
         }
     )
+
+    if (categoryExportDialog && categoryExportTarget != null) {
+        val target = categoryExportTarget!!
+        AlertDialog(
+            onDismissRequest = { categoryExportDialog = false },
+            title = { Text("Exporter « ${target.name} »") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("L'export inclut ce dossier, ses sous-dossiers et toutes leurs notes.")
+                    OutlinedButton(onClick = { categoryExportDialog = false; categoryMarkdownLauncher.launch("LeafNotes-${target.name}.md") }, modifier = Modifier.fillMaxWidth()) { Text("Markdown (.md)") }
+                    OutlinedButton(onClick = { categoryExportDialog = false; categoryCsvLauncher.launch("LeafNotes-${target.name}.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Tableur CSV (.csv)") }
+                    OutlinedButton(onClick = { categoryExportDialog = false; categoryHtmlLauncher.launch("LeafNotes-${target.name}.html") }, modifier = Modifier.fillMaxWidth()) { Text("Page web HTML (.html)") }
+                    OutlinedButton(onClick = { categoryExportDialog = false; categoryPdfLauncher.launch("LeafNotes-${target.name}.pdf") }, modifier = Modifier.fillMaxWidth()) { Text("Document PDF (.pdf)") }
+                    OutlinedButton(onClick = { categoryExportDialog = false; categoryJsonLauncher.launch("LeafNotes-${target.name}.json") }, modifier = Modifier.fillMaxWidth()) { Text("Données JSON (.json)") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { categoryExportDialog = false }) { Text("Fermer") } }
+        )
+    }
 
     if (categoryDeleteTarget != null) {
         val target = categoryDeleteTarget!!
