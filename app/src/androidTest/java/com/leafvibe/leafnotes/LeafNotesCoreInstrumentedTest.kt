@@ -18,7 +18,7 @@ class LeafNotesCoreInstrumentedTest {
             NoteCategory("Maths", "➗", 0xFF4D9B83, "Cours")
         )
         val notes = listOf(
-            Note(id = "note-1", title = "Matrices", body = "Cours BTS", category = "Maths", favorite = true, updatedAt = 1234L, tags = listOf("BTS", "révision"), checklist = listOf(ChecklistItem(id = "c1", text = "Apprendre", checked = true, position = 0)))
+            Note(id = "note-1", title = "Matrices", body = "Cours BTS", category = "Maths", favorite = true, updatedAt = 1234L, tags = listOf("BTS", "révision"), checklist = listOf(ChecklistItem(id = "c1", text = "Apprendre", checked = true, position = 0)), flashcards = listOf(Flashcard(id = "f1", question = "Q", answer = "A", dueAt = 123L, intervalDays = 3, repetitions = 2)))
         )
 
         val decoded = LeafNotesTransfer.decode(LeafNotesTransfer.encode(notes, categories))
@@ -85,7 +85,7 @@ class LeafNotesCoreInstrumentedTest {
         val preferences = context.getSharedPreferences("leafnotes-test-store", android.content.Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
         val firstStore = LeafNotesStore(preferences)
-        val note = Note(id = "persisted", title = "Test durable", body = "Contenu", category = "Maths", favorite = true, updatedAt = 99L, tags = listOf("BTS"), checklist = listOf(ChecklistItem(id = "check1", text = "Exercice", checked = false, position = 0)))
+        val note = Note(id = "persisted", title = "Test durable", body = "Contenu", category = "Maths", favorite = true, updatedAt = 99L, tags = listOf("BTS"), checklist = listOf(ChecklistItem(id = "check1", text = "Exercice", checked = false, position = 0)), flashcards = listOf(Flashcard(id = "f2", question = "Pourquoi ?", answer = "Parce que", dueAt = 456L, intervalDays = 1, repetitions = 1)))
         val categories = listOf(
             NoteCategory("Cours", "📚", 1L),
             NoteCategory("Maths", "➗", 2L, "Cours")
