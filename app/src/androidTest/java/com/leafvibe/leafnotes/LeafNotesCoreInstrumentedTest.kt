@@ -65,6 +65,20 @@ class LeafNotesCoreInstrumentedTest {
     }
 
     @Test
+    fun importRemapsTrashedNoteCategoryWhenNameCollides() {
+        val archivedNote = Note(id = "trash-source", title = "Ancienne note", body = "Texte", category = "Cours")
+        val archive = LeafNotesTransfer.Archive(
+            notes = emptyList(),
+            categories = listOf(NoteCategory("Cours", "📚", 0xFF5685C5)),
+            exportedAt = 20L,
+            trash = listOf(TrashedNote(archivedNote, deletedAt = 21L))
+        )
+        val result = LeafNotesTransfer.merge(emptyList(), listOf(NoteCategory("Cours", "📖", 0xFF000000)), archive)
+        assertEquals("Cours (2)", result.trash.single().note.category)
+        assertTrue(result.categories.any { it.name == "Cours (2)" })
+    }
+
+    @Test
     fun importRecreatesCategoryReferencedByNoteWhenArchiveOmitsIt() {
         val archive = LeafNotesTransfer.Archive(
             notes = listOf(Note(id = "orphan", title = "Note importée", body = "Texte", category = "Catégorie absente")),
