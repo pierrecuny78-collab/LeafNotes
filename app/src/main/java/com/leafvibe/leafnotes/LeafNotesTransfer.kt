@@ -289,6 +289,63 @@ internal object LeafNotesTransfer {
         }
         return text.toByteArray(StandardCharsets.UTF_8)
     }
+
+    fun exportMarkdown(notes: List<Note>): ByteArray {
+        val text = notes.joinToString("\n\n---\n\n") { note ->
+            buildString {
+                append("# ").appendLine(note.title.ifBlank { "Sans titre" })
+                appendLine("> Catégorie : ${note.category}")
+                if (note.tags.isNotEmpty()) appendLine("> Tags : ${note.tags.joinToString(", ")}")
+                appendLine()
+                appendLine(note.body)
+                if (note.checklist.isNotEmpty()) {
+                    appendLine()
+                    appendLine("## Liste à cocher")
+                    note.checklist.forEach { appendLine((if (it.checked) "- [x] " else "- [ ] ") + it.text) }
+                }
+                if (note.flashcards.isNotEmpty()) {
+                    appendLine()
+                    appendLine("## Questions / réponses")
+                    note.flashcards.forEach { appendLine("- **Q :** ${it.question}  "); appendLine("  **R :** ${it.answer}") }
+                }
+                if (note.attachments.isNotEmpty()) {
+                    appendLine()
+                    appendLine("## Fichiers joints")
+                    note.attachments.forEach { appendLine("- [${it.displayName}](${it.uri})") }
+                }
+            }
+        }
+        return text.toByteArray(StandardCharsets.UTF_8)
+    }
+
+    fun exportCsv(notes: List<Note>): ByteArray {
+        fun cell(value: String) = "\"" + value.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\""
+        val rows = mutableListOf(listOf("id", "titre", "contenu", "categorie", "favori", "tags", "pieces_jointes"))
+        notes.forEach { note ->
+            rows += listOf(note.id, note.title, note.body, note.category, note.favorite.toString(),
+                note.tags.joinToString("; "), note.attachments.joinToString("; ") { it.displayName })
+        }
+        return rows.joinToString("\r\n") { row -> row.joinToString(",") { cell(it) } }.toByteArray(StandardCharsets.UTF_8)
+    }
+
+    fun exportHtml(notes: List<Note>): ByteArray {
+        fun escape(value: String) = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+        val html = buildString {
+            appendLine("<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><title>Export LeafNotes</title><body>")
+            appendLine("<h1>LeafNotes</h1>")
+            notes.forEach { note ->
+                appendLine("<article><h2>${escape(note.icon)} ${escape(note.title)}</h2>")
+                appendLine("<p><strong>Catégorie :</strong> ${escape(note.category)}</p>")
+                appendLine("<p>${escape(note.body).replace("\n", "<br>")}</p>")
+                if (note.tags.isNotEmpty()) appendLine("<p>Tags : ${escape(note.tags.joinToString(", "))}</p>")
+                if (note.attachments.isNotEmpty()) appendLine("<ul>${note.attachments.joinToString("") { "<li>${escape(it.displayName)} (${escape(it.mimeType)})</li>" }}</ul>")
+                appendLine("</article><hr>")
+            }
+            appendLine("</body></html>")
+        }
+        return html.toByteArray(StandardCharsets.UTF_8)
+    }
+
 }
 
 /** Soft-delete record. Keep the original note intact so it can be restored. */
