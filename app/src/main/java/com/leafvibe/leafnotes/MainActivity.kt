@@ -1,6 +1,10 @@
 package com.leafvibe.leafnotes
 
 import android.content.Context
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.os.Bundle
 import android.Manifest
 import android.content.pm.PackageManager
@@ -44,10 +48,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
+import java.util.Calendar
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipInputStream
+import java.io.ByteArrayInputStream
 import java.util.UUID
 
 data class Note(
@@ -57,7 +68,12 @@ data class Note(
     val category: String,
     val favorite: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis(),
-    val reminderAt: Long = 0L
+    val reminderAt: Long = 0L,
+    val iconUri: String = "",
+    val mediaUris: List<String> = emptyList(),
+    val parentNoteId: String = "",
+    val tags: List<String> = emptyList(),
+    val history: List<String> = emptyList()
 )
 private data class NoteCategory(val name: String, val emoji: String, val color: Long, val parent: String = "")
 
@@ -93,6 +109,7 @@ private fun LeafNotesApp() {
     var categories by remember { mutableStateOf(loadCategories(prefs)) }
     var darkTheme by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
     var selectedCategory by remember { mutableStateOf("Tous") }
+    var expandedCategory by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var page by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<Note?>(null) }
@@ -120,8 +137,13 @@ private fun LeafNotesApp() {
             value.forEach { n -> put(JSONObject().apply {
                 put("id", n.id); put("title", n.title); put("body", n.body)
                 put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt); put("reminderAt", n.reminderAt)
+                put("iconUri", n.iconUri); put("parentNoteId", n.parentNoteId)
+                put("mediaUris", JSONArray().apply { n.mediaUris.forEach { put(it) } })
+                put("tags", JSONArray().apply { n.tags.forEach { put(it) } })
+                put("history", JSONArray().apply { n.history.forEach { put(it) } })
             }) }
         }.toString()).apply()
+        LeafNotesWidgetProvider.refresh(context)
     }
     // Never delete categories: preserve existing entries and append new ones.
     fun saveCategories(value: List<NoteCategory>) {
@@ -150,9 +172,43 @@ private fun LeafNotesApp() {
             context.contentResolver.openOutputStream(uri)?.use { it.write(buildBackupJson(notes, categories).toByteArray(Charsets.UTF_8)) }
         }
     }
+    val textExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(buildTextExport(notes).toByteArray(Charsets.UTF_8)) }
+        }
+    }
+    val markdownExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(buildMarkdownExport(notes).toByteArray(Charsets.UTF_8)) }
+        }
+    }
+    val pdfExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { writePdfExport(it, notes) }
+        }
+    }
+    val zipExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                ZipOutputStream(output).use { zip ->
+                    zip.putNextEntry(ZipEntry("LeafNotes-sauvegarde.json"))
+                    zip.write(buildBackupJson(notes, categories).toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+            }
+        }
+    }
     val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
-            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Fichier vide")
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Fichier vide")
+            val isZip = context.contentResolver.getType(uri) == "application/zip" ||
+                (bytes.size >= 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte())
+            val raw = if (isZip) {
+                ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                    zip.nextEntry ?: error("Archive ZIP vide")
+                    zip.readBytes().toString(Charsets.UTF_8)
+                }
+            } else bytes.toString(Charsets.UTF_8)
             val root = JSONObject(raw)
             val importedNotes = parseBackupNotes(root.optJSONArray("notes") ?: JSONArray())
             val importedCategories = parseBackupCategories(root.optJSONArray("categories") ?: JSONArray())
@@ -164,17 +220,28 @@ private fun LeafNotesApp() {
                 .filter { it.isNotBlank() && it.lowercase() !in knownNames }
                 .map { NoteCategory(it, "📁", 0xFF6C9B80) }
             saveCategories(missingCategories)
-            saveNotes(importedNotes)
+            val importedIds = importedNotes.map { it.id }.toSet()
+            val mergedNotes = notes.filterNot { it.id in importedIds } + importedNotes
+            saveNotes(mergedNotes)
         }
     }
 
+    val selectedCategoryNames = remember(categories, selectedCategory) {
+        val names = mutableSetOf(selectedCategory)
+        var changed = true
+        while (changed) {
+            changed = false
+            categories.filter { it.parent in names }.forEach { if (names.add(it.name)) changed = true }
+        }
+        names
+    }
     val visible = notes.filter { n ->
         val categoryMatch = when (selectedCategory) {
             "Tous" -> true
             FAVORITES_FILTER -> n.favorite
-            else -> n.category == selectedCategory
+            else -> n.category in selectedCategoryNames
         }
-        categoryMatch && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true))
+        categoryMatch && (query.isBlank() || n.title.contains(query, true) || n.body.contains(query, true) || n.tags.any { it.contains(query, true) })
     }.sortedByDescending { it.updatedAt }
     val pageCount = maxOf(1, (visible.size + 4) / 5)
     val safePage = page.coerceIn(0, pageCount - 1)
@@ -218,11 +285,23 @@ private fun LeafNotesApp() {
                 )
                 Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; page = 0 }, label = { Text("Tout") }) }
-                    item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; page = 0 }, label = { Text("⭐ Favoris") }) }
-                    items(categories) { category ->
-                        FilterChip(selectedCategory == category.name, { selectedCategory = category.name; page = 0 },
-                            label = { Text("${category.emoji} ${category.name}") })
+                    item { FilterChip(selectedCategory == "Tous", { selectedCategory = "Tous"; expandedCategory = null; page = 0 }, label = { Text("Tout") }) }
+                    item { FilterChip(selectedCategory == FAVORITES_FILTER, { selectedCategory = FAVORITES_FILTER; expandedCategory = null; page = 0 }, label = { Text("⭐ Favoris") }) }
+                    items(categories.filter { it.parent.isBlank() }) { category ->
+                        FilterChip(selectedCategory == category.name, {
+                            selectedCategory = category.name
+                            page = 0
+                            expandedCategory = if (expandedCategory == category.name) null else category.name
+                        }, label = { Text(category.emoji + " " + category.name) })
+                    }
+                    expandedCategory?.let { parent ->
+                        items(categories.filter { it.parent == parent }) { child ->
+                            FilterChip(selectedCategory == child.name, {
+                                selectedCategory = child.name
+                                page = 0
+                                expandedCategory = child.name
+                            }, label = { Text("↳ " + child.emoji + " " + child.name) })
+                        }
                     }
                     item { AssistChip(onClick = { categoryParent = ""; showCategoryEditor = true }, label = { Text("＋ Catégorie") }) }
                     item { AssistChip(onClick = { showCategoryManager = true }, label = { Text("Gérer les dossiers") }) }
@@ -302,10 +381,21 @@ private fun LeafNotesApp() {
         saveNotes(notes.map { if (it.id == target.id) it.copy(reminderAt = whenAt) else it })
         reminderTarget = null
     }
-    if (showEditor) NoteEditorDialog(editing, categories, { showEditor = false }) { title, body, category ->
+    if (showEditor) NoteEditorDialog(editing, categories, notes, { showEditor = false }) { title, body, category, iconUri, mediaUris, parentNoteId, tags ->
         val old = editing
-        val changed = if (old == null) notes + Note(title = title, body = body, category = category)
-        else notes.map { if (it.id == old.id) old.copy(title = title, body = body, category = category, updatedAt = System.currentTimeMillis()) else it }
+        val changed = if (old == null) notes + Note(title = title, body = body, category = category,
+            iconUri = iconUri, mediaUris = mediaUris, parentNoteId = parentNoteId, tags = tags)
+        else notes.map { note ->
+            if (note.id == old.id) {
+                val snapshot = JSONObject().put("title", old.title).put("body", old.body)
+                    .put("category", old.category).put("iconUri", old.iconUri)
+                    .put("mediaUris", JSONArray().apply { old.mediaUris.forEach { put(it) } })
+                    .put("updatedAt", old.updatedAt).toString()
+                old.copy(title = title, body = body, category = category, iconUri = iconUri,
+                    mediaUris = mediaUris, parentNoteId = parentNoteId, tags = tags,
+                    history = (old.history + snapshot).takeLast(30), updatedAt = System.currentTimeMillis())
+            } else note
+        }
         saveNotes(changed)
         showEditor = false
     }
@@ -322,8 +412,16 @@ private fun LeafNotesApp() {
     if (showLearning) LeafLearningDialog(notes) { showLearning = false }
     if (showQuiz) LeafQuizDialog(notes) { showQuiz = false }
     if (showBackup) LeafBackupDialog(
-        onExport = { backupExport.launch("LeafNotes-sauvegarde.json") },
-        onImport = { backupImport.launch(arrayOf("application/json", "text/*")) },
+        onExport = { format ->
+            when (format) {
+                "txt" -> textExport.launch("LeafNotes.txt")
+                "md" -> markdownExport.launch("LeafNotes.md")
+                "pdf" -> pdfExport.launch("LeafNotes.pdf")
+                "zip" -> zipExport.launch("LeafNotes-sauvegarde.zip")
+                else -> backupExport.launch("LeafNotes-sauvegarde.json")
+            }
+        },
+        onImport = { backupImport.launch(arrayOf("application/json", "text/*", "application/zip")) },
         onDismiss = { showBackup = false }
     )
     if (showCategoryEditor) CategoryEditorDialog(categories, categoryParent, { showCategoryEditor = false }) { name, emoji, parent ->
@@ -345,6 +443,11 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (note.iconUri.isNotBlank()) {
+                    AsyncImage(model = note.iconUri, contentDescription = "Icône de la note",
+                        modifier = Modifier.size(38.dp), contentScale = ContentScale.Crop)
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(note.title.ifBlank { "Sans titre" }, Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 IconButton(onClick = onFavorite) {
@@ -355,6 +458,10 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
                 IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer") }
             }
             if (note.body.isNotBlank()) Text(note.body, maxLines = 3, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (note.mediaUris.isNotEmpty() || note.parentNoteId.isNotBlank()) {
+                Text("📎 ${note.mediaUris.size} pièce(s) jointe(s) ${if (note.parentNoteId.isNotBlank()) "· Sous-note" else ""}",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            }
             TextButton(onClick = { onReminder(note) }) { Text(if (note.reminderAt > System.currentTimeMillis()) "⏰ Rappel programmé" else "＋ Ajouter un rappel") }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -377,29 +484,109 @@ private fun NoteCard(note: Note, onEdit: () -> Unit, onFavorite: () -> Unit, onD
 }
 
 @Composable
-private fun NoteEditorDialog(initial: Note?, categories: List<NoteCategory>, onDismiss: () -> Unit,
-    onSave: (String, String, String) -> Unit) {
+private fun NoteEditorDialog(
+    initial: Note?, categories: List<NoteCategory>, allNotes: List<Note>, onDismiss: () -> Unit,
+    onSave: (String, String, String, String, List<String>, String, List<String>) -> Unit
+) {
+    val context = LocalContext.current
     var title by remember(initial) { mutableStateOf(initial?.title.orEmpty()) }
     var body by remember(initial) { mutableStateOf(initial?.body.orEmpty()) }
     var category by remember(initial) { mutableStateOf(initial?.category ?: categories.firstOrNull()?.name ?: "Nouveaux") }
+    var iconUri by remember(initial) { mutableStateOf(initial?.iconUri.orEmpty()) }
+    var mediaUris by remember(initial) { mutableStateOf(initial?.mediaUris ?: emptyList()) }
+    var parentNoteId by remember(initial) { mutableStateOf(initial?.parentNoteId.orEmpty()) }
+    var tagsText by remember(initial) { mutableStateOf(initial?.tags?.joinToString(", ").orEmpty()) }
+    var showHistory by remember(initial) { mutableStateOf(false) }
+    val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            iconUri = uri.toString()
+        }
+    }
+    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        mediaUris = (mediaUris + uris.map { it.toString() }).distinct()
+    }
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Nouvelle note" else "Modifier la note") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(title, { title = it }, label = { Text("Titre") }, singleLine = true)
                 OutlinedTextField(body, { body = it }, label = { Text("Écris tes idées…") }, minLines = 5)
+                OutlinedTextField(tagsText, { tagsText = it }, label = { Text("Tags (séparés par des virgules)") })
+                if (initial != null) OutlinedButton(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Historique des versions (" + initial.history.size + "/30)")
+                }
                 Text("Catégorie", style = MaterialTheme.typography.labelLarge)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(categories) { c ->
-                        FilterChip(category == c.name, { category = c.name }, label = { Text("${c.emoji} ${c.name}") })
+                        FilterChip(category == c.name, { category = c.name }, label = { Text(c.emoji + " " + c.name) })
+                    }
+                }
+                Text("Icône de la note", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { iconPicker.launch(arrayOf("image/png", "image/jpeg")) }) { Text("Choisir PNG/JPG") }
+                    if (iconUri.isNotBlank()) {
+                        AsyncImage(model = iconUri, contentDescription = "Aperçu de l'icône",
+                            modifier = Modifier.size(42.dp), contentScale = ContentScale.Crop)
+                        TextButton(onClick = { iconUri = "" }) { Text("Retirer") }
+                    }
+                }
+                Text("Médias et fichiers", style = MaterialTheme.typography.labelLarge)
+                OutlinedButton(onClick = { mediaPicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Ajouter des pièces jointes")
+                }
+                mediaUris.forEach { uri ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(uri.substringAfterLast('/').take(32), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { mediaUris = mediaUris - uri }) { Text("Retirer") }
+                    }
+                }
+                Text("Sous-note de", style = MaterialTheme.typography.labelLarge)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { FilterChip(parentNoteId.isBlank(), { parentNoteId = "" }, label = { Text("Aucune") }) }
+                    items(allNotes.filter { it.id != initial?.id }) { parent ->
+                        FilterChip(parentNoteId == parent.id, { parentNoteId = parent.id },
+                            label = { Text(parent.title.ifBlank { "Sans titre" }.take(20)) })
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(title.trim(), body.trim(), category) }) { Text("Enregistrer") } },
+        confirmButton = { TextButton(onClick = { onSave(title.trim(), body.trim(), category, iconUri, mediaUris, parentNoteId, tagsText.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct()) }) { Text("Enregistrer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } })
+    if (showHistory) {
+        AlertDialog(
+            onDismissRequest = { showHistory = false },
+            title = { Text("Historique des versions") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val versions = initial?.history.orEmpty().asReversed()
+                    if (versions.isEmpty()) Text("Aucune ancienne version enregistrée.")
+                    versions.forEachIndexed { index, raw ->
+                        val snapshot = runCatching { JSONObject(raw) }.getOrNull()
+                        TextButton(onClick = {
+                            if (snapshot != null) {
+                                title = snapshot.optString("title", title)
+                                body = snapshot.optString("body", body)
+                                category = snapshot.optString("category", category)
+                                iconUri = snapshot.optString("iconUri", iconUri)
+                                mediaUris = snapshot.optJSONArray("mediaUris")?.let { a ->
+                                    (0 until a.length()).map { a.optString(it) }
+                                } ?: mediaUris
+                            }
+                            showHistory = false
+                        }) {
+                            Text("Restaurer la version " + (versions.size - index) + " · " + (snapshot?.optString("title", "Sans titre") ?: "Version illisible"))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Fermer") } }
+        )
+    }
 }
-
 @Composable
 private fun CategoryEditorDialog(categories: List<NoteCategory>, initialParent: String, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
@@ -426,7 +613,12 @@ private fun loadNotes(prefs: android.content.SharedPreferences): List<Note> = ru
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
         Note(o.optString("id"), o.optString("title"), o.optString("body"),
-            o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt"), o.optLong("reminderAt", 0L))
+            o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt"), o.optLong("reminderAt", 0L),
+            iconUri = o.optString("iconUri", ""),
+            mediaUris = o.optJSONArray("mediaUris")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+            parentNoteId = o.optString("parentNoteId", ""),
+            tags = o.optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+            history = o.optJSONArray("history")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList())
     }
 }.getOrDefault(emptyList())
 
@@ -648,47 +840,110 @@ private fun LeafLearningDialog(notes: List<Note>, onDismiss: () -> Unit) {
 
 @Composable
 private fun LeafQuizDialog(notes: List<Note>, onDismiss: () -> Unit) {
+    var quizNotes by remember(notes) { mutableStateOf(notes.shuffled()) }
     var index by remember(notes) { mutableIntStateOf(0) }
-    var answerVisible by remember { mutableStateOf(false) }
+    var selectedAnswer by remember { mutableStateOf<String?>(null) }
     var correct by remember { mutableIntStateOf(0) }
     var wrong by remember { mutableIntStateOf(0) }
-    val note = notes.getOrNull(index.coerceIn(0, (notes.size - 1).coerceAtLeast(0)))
+    val note = quizNotes.getOrNull(index)
+    val options = remember(note, quizNotes) {
+        if (note == null) emptyList()
+        else (listOf(note.body) + quizNotes.filter { it.id != note.id }.map { it.body })
+            .filter { it.isNotBlank() }.distinct().shuffled().take(4)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("LeafQuiz · Quiz à partir de tes notes") },
+        title = { Text("LeafQuiz · Quiz avancé") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (note == null) Text("Ajoute des notes pour générer tes premières questions.")
-                else {
-                    Text("Question " + (index + 1) + " / " + notes.size, color = MaterialTheme.colorScheme.primary)
-                    Text(note.title.ifBlank { "Quel est le sujet de cette note ?" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    if (answerVisible) Text(note.body.ifBlank { "Aucune réponse enregistrée." })
-                    else Text("Essaie de répondre sans consulter ton cours.")
-                    Button(onClick = { answerVisible = !answerVisible }) { Text(if (answerVisible) "Masquer" else "Voir la réponse") }
-                    if (answerVisible) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { wrong++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Incorrect") }
-                        Button(onClick = { correct++; index = (index + 1).coerceAtMost(notes.lastIndex); answerVisible = false }) { Text("Correct") }
+                if (note == null) {
+                    Text("Ajoute des notes pour générer tes premières questions.")
+                    Text("Score : " + correct + " bonne(s) réponse(s), " + wrong + " erreur(s).")
+                } else {
+                    Text("Question " + (index + 1) + " / " + quizNotes.size,
+                        color = MaterialTheme.colorScheme.primary)
+                    LinearProgressIndicator(
+                        progress = (index + 1).toFloat() / quizNotes.size.coerceAtLeast(1),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(note.title.ifBlank { "Quel est le sujet de cette note ?" },
+                        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (options.size >= 2) {
+                        Text("Choisis la bonne réponse :")
+                        options.forEach { option ->
+                            OutlinedButton(
+                                onClick = {
+                                    if (selectedAnswer == null) {
+                                        selectedAnswer = option
+                                        if (option == note.body) correct++ else wrong++
+                                    }
+                                },
+                                enabled = selectedAnswer == null,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(option.take(120)) }
+                        }
+                        selectedAnswer?.let { answer ->
+                            Text(
+                                if (answer == note.body) "Bonne réponse !" else "Pas tout à fait. Réponse : " + note.body,
+                                color = if (answer == note.body) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    } else {
+                        Text(if (selectedAnswer == null) "Réfléchis puis révèle la réponse." else note.body)
+                        Button(onClick = { selectedAnswer = note.body }) {
+                            Text(if (selectedAnswer == null) "Voir la réponse" else "Réponse affichée")
+                        }
+                        if (selectedAnswer != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { wrong++ ; selectedAnswer = "skip" }) { Text("À revoir") }
+                                Button(onClick = { correct++ ; selectedAnswer = "mastered" }) { Text("Je maîtrise") }
+                            }
+                        }
                     }
-                    Text("Réponses correctes : " + correct + " · À retravailler : " + wrong, style = MaterialTheme.typography.labelMedium)
+                    Text("Score : " + correct + " correcte(s) · " + wrong + " à revoir",
+                        style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { index = (index - 1).coerceAtLeast(0); selectedAnswer = null },
+                            enabled = index > 0
+                        ) { Text("Précédente") }
+                        Button(
+                            onClick = { index = (index + 1).coerceAtMost(quizNotes.lastIndex); selectedAnswer = null },
+                            enabled = index < quizNotes.lastIndex
+                        ) { Text(if (index == quizNotes.lastIndex) "Fin" else "Suivante") }
+                    }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } }
+        confirmButton = {
+            TextButton(onClick = {
+                quizNotes = notes.shuffled()
+                index = 0
+                selectedAnswer = null
+                correct = 0
+                wrong = 0
+            }) { Text("Nouveau mélange") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Terminer") } }
     )
 }
 
 @Composable
-private fun LeafBackupDialog(onExport: () -> Unit, onImport: () -> Unit, onDismiss: () -> Unit) {
+private fun LeafBackupDialog(onExport: (String) -> Unit, onImport: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("LeafBackup · Sauvegarde locale") },
+        title = { Text("LeafBackup · Export et sauvegarde") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Exporte tes notes et catégories dans un fichier JSON, puis conserve-le sur ta carte SD ou un autre support.")
-                OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text("Exporter une sauvegarde") }
-                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde") }
-                Text("L'import remplace la bibliothèque actuelle. Fais une sauvegarde avant de restaurer.",
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choisis un format d'export. Le ZIP contient une sauvegarde JSON complète.")
+                OutlinedButton(onClick = { onExport("json") }, modifier = Modifier.fillMaxWidth()) { Text("Sauvegarde JSON") }
+                OutlinedButton(onClick = { onExport("zip") }, modifier = Modifier.fillMaxWidth()) { Text("Archive ZIP") }
+                OutlinedButton(onClick = { onExport("txt") }, modifier = Modifier.fillMaxWidth()) { Text("Texte TXT") }
+                OutlinedButton(onClick = { onExport("md") }, modifier = Modifier.fillMaxWidth()) { Text("Markdown") }
+                OutlinedButton(onClick = { onExport("pdf") }, modifier = Modifier.fillMaxWidth()) { Text("Document PDF") }
+                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) { Text("Importer une sauvegarde JSON") }
+                Text("L'import fusionne les notes par identifiant et conserve les notes locales absentes du fichier.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
@@ -697,25 +952,80 @@ private fun LeafBackupDialog(onExport: () -> Unit, onImport: () -> Unit, onDismi
 
 private fun buildBackupJson(notes: List<Note>, categories: List<NoteCategory>): String = JSONObject().apply {
     put("format", "leafnotes-backup")
-    put("version", 1)
+    put("version", 2)
     put("createdAt", System.currentTimeMillis())
     put("notes", JSONArray().apply {
         notes.forEach { n -> put(JSONObject().apply {
             put("id", n.id); put("title", n.title); put("body", n.body)
             put("category", n.category); put("favorite", n.favorite); put("updatedAt", n.updatedAt); put("reminderAt", n.reminderAt)
+            put("iconUri", n.iconUri); put("parentNoteId", n.parentNoteId)
+            put("mediaUris", JSONArray().apply { n.mediaUris.forEach { put(it) } })
+            put("tags", JSONArray().apply { n.tags.forEach { put(it) } })
+            put("history", JSONArray().apply { n.history.forEach { put(it) } })
         }) }
     })
     put("categories", JSONArray().apply {
         categories.forEach { c -> put(JSONObject().apply {
-            put("name", c.name); put("emoji", c.emoji); put("color", c.color)
+            put("name", c.name); put("emoji", c.emoji); put("color", c.color); put("parent", c.parent)
         }) }
     })
 }.toString(2)
 
+private fun buildTextExport(notes: List<Note>): String = notes.joinToString("\n\n--------------------\n\n") { note ->
+    buildString {
+        append(note.title.ifBlank { "Sans titre" }).append("\n")
+        append("Catégorie : ").append(note.category).append("\n")
+        if (note.tags.isNotEmpty()) append("Tags : ").append(note.tags.joinToString(", ")).append("\n")
+        append(note.body)
+        if (note.mediaUris.isNotEmpty()) append("\n\nPièces jointes :\n").append(note.mediaUris.joinToString("\n"))
+    }
+}
+
+private fun buildMarkdownExport(notes: List<Note>): String = notes.joinToString("\n\n---\n\n") { note ->
+    buildString {
+        append("# ").append(note.title.ifBlank { "Sans titre" }).append("\n\n")
+        append("**Catégorie :** ").append(note.category).append("\n\n")
+        if (note.tags.isNotEmpty()) append("**Tags :** ").append(note.tags.joinToString(", ")).append("\n\n")
+        append(note.body)
+        if (note.mediaUris.isNotEmpty()) append("\n\n**Pièces jointes**\n").append(note.mediaUris.joinToString("\n") { "- $it" })
+    }
+}
+
+private fun writePdfExport(output: java.io.OutputStream, notes: List<Note>) {
+    val document = PdfDocument()
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f; color = android.graphics.Color.BLACK }
+    val lines = buildTextExport(notes).lines().flatMap { line ->
+        if (line.length <= 86) listOf(line) else line.chunked(86)
+    }
+    var pageNumber = 1
+    var page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNumber).create())
+    var canvas = page.canvas
+    var y = 48f
+    lines.forEach { line ->
+        if (y > 800f) {
+            document.finishPage(page)
+            pageNumber += 1
+            page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNumber).create())
+            canvas = page.canvas
+            y = 48f
+        }
+        canvas.drawText(line.take(86), 40f, y, paint)
+        y += 17f
+    }
+    document.finishPage(page)
+    document.writeTo(output)
+    document.close()
+}
+
 private fun parseBackupNotes(array: JSONArray): List<Note> = (0 until array.length()).map { i ->
     val o = array.getJSONObject(i)
     Note(o.optString("id", UUID.randomUUID().toString()), o.optString("title"), o.optString("body"),
-        o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt", System.currentTimeMillis()), o.optLong("reminderAt", 0L))
+        o.optString("category", "Nouveaux"), o.optBoolean("favorite"), o.optLong("updatedAt", System.currentTimeMillis()), o.optLong("reminderAt", 0L),
+        iconUri = o.optString("iconUri", ""),
+        mediaUris = o.optJSONArray("mediaUris")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+        parentNoteId = o.optString("parentNoteId", ""),
+        tags = o.optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+        history = o.optJSONArray("history")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList())
 }
 
 private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 until array.length()).map { i ->
@@ -726,15 +1036,47 @@ private fun parseBackupCategories(array: JSONArray): List<NoteCategory> = (0 unt
 
 @Composable
 private fun ReminderDialog(note: Note, onDismiss: () -> Unit, onChoose: (Long) -> Unit) {
+    val context = LocalContext.current
+    fun chooseCustomDateTime() {
+        val initial = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, 1) }
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        val selected = Calendar.getInstance().apply {
+                            set(Calendar.YEAR, year)
+                            set(Calendar.MONTH, month)
+                            set(Calendar.DAY_OF_MONTH, day)
+                            set(Calendar.HOUR_OF_DAY, hour)
+                            set(Calendar.MINUTE, minute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        val delay = ((selected.timeInMillis - System.currentTimeMillis()) / 60_000L).coerceAtLeast(1L)
+                        onChoose(delay)
+                    },
+                    initial.get(Calendar.HOUR_OF_DAY),
+                    initial.get(Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            initial.get(Calendar.YEAR),
+            initial.get(Calendar.MONTH),
+            initial.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rappel · " + note.title.ifBlank { "Sans titre" }) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Choisis quand Android doit te rappeler cette note.")
+                Text("Choisis une date et une heure, ou utilise un délai rapide.")
                 OutlinedButton(onClick = { onChoose(60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans 1 heure") }
                 OutlinedButton(onClick = { onChoose(24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Demain") }
                 OutlinedButton(onClick = { onChoose(7L * 24L * 60L) }, modifier = Modifier.fillMaxWidth()) { Text("Dans une semaine") }
+                OutlinedButton(onClick = { chooseCustomDateTime() }, modifier = Modifier.fillMaxWidth()) { Text("Choisir date et heure…") }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Annuler") } }
