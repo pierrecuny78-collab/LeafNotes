@@ -25,7 +25,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                 checklist = item.optJSONArray("checklist").toChecklist(),
                 flashcards = item.optJSONArray("flashcards").toFlashcards(),
                 icon = item.optString("icon", "📝"),
-                reminderAt = item.optLong("reminderAt", 0L)
+                reminderAt = item.optLong("reminderAt", 0L),
+                revisions = item.optJSONArray("revisions").toRevisions(id)
             )
         }
     }.getOrDefault(emptyList())
@@ -95,7 +96,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     checklist = note.optJSONArray("checklist").toChecklist(),
                     flashcards = note.optJSONArray("flashcards").toFlashcards(),
                     icon = note.optString("icon", "📝"),
-                    reminderAt = note.optLong("reminderAt", 0L)
+                    reminderAt = note.optLong("reminderAt", 0L),
+                    revisions = note.optJSONArray("revisions").toRevisions(id)
                 ),
                 deletedAt = item.optLong("deletedAt", 0L)
             )
@@ -119,7 +121,8 @@ internal class LeafNotesStore(private val preferences: SharedPreferences) {
                     .put("checklist", JSONArray().apply { note.checklist.forEach { put(JSONObject().put("id", it.id).put("text", it.text).put("checked", it.checked).put("position", it.position)) } })
                     .put("flashcards", note.flashcards.toJson())
                     .put("icon", note.icon)
-                    .put("reminderAt", note.reminderAt)))
+                    .put("reminderAt", note.reminderAt)
+                    .put("revisions", note.revisions.toJson())))
         }
         preferences.edit().putString(KEY_TRASH, array.toString()).apply()
     }
@@ -146,6 +149,24 @@ private fun JSONArray?.toChecklist(): List<ChecklistItem> {
             text = text,
             checked = item.optBoolean("checked", false),
             position = item.optInt("position", index)
+        )
+    }
+}
+
+private fun List<NoteRevision>.toJson(): JSONArray = JSONArray().apply {
+    forEach { revision -> put(JSONObject().put("id", revision.id).put("noteId", revision.noteId).put("title", revision.title).put("body", revision.body).put("savedAt", revision.savedAt)) }
+}
+
+private fun JSONArray?.toRevisions(noteId: String): List<NoteRevision> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index ->
+        val item = optJSONObject(index) ?: return@mapNotNull null
+        NoteRevision(
+            id = item.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+            noteId = noteId,
+            title = item.optString("title"),
+            body = item.optString("body"),
+            savedAt = item.optLong("savedAt", 0L)
         )
     }
 }
