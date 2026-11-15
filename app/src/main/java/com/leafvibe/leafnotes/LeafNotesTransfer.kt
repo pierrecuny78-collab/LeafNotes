@@ -3,6 +3,11 @@ package com.leafvibe.leafnotes
 import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /**
  * Versioned, portable LeafNotes archive format.
@@ -86,9 +91,45 @@ internal object LeafNotesTransfer {
         return root.toString(2).toByteArray(StandardCharsets.UTF_8)
     }
 
+    fun encodeZip(notes: List<Note>, categories: List<NoteCategory>, trash: List<TrashedNote> = emptyList(), templates: List<NoteTemplate> = emptyList()): ByteArray {
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            zip.putNextEntry(ZipEntry("library.leafnotes"))
+            zip.write(encode(notes, categories, trash, templates))
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("notes.txt"))
+            zip.write(exportText(notes))
+            zip.closeEntry()
+        }
+        return output.toByteArray()
+    }
+
     fun decode(bytes: ByteArray): Archive {
         require(bytes.size <= 50 * 1024 * 1024) { "Archive trop volumineuse (50 Mo maximum)." }
-        val root = JSONObject(String(bytes, StandardCharsets.UTF_8))
+        val payload = if (bytes.size >= 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) {
+            var archiveBytes: ByteArray? = null
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (!entry.isDirectory && entry.name == "library.leafnotes") {
+                        val output = ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        while (true) {
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= 50 * 1024 * 1024) { "Contenu ZIP trop volumineux." }
+                            output.write(buffer, 0, count)
+                        }
+                        archiveBytes = output.toByteArray()
+                        break
+                    }
+                }
+            }
+            archiveBytes ?: error("Le ZIP ne contient pas library.leafnotes.")
+        } else bytes
+        val root = JSONObject(String(payload, StandardCharsets.UTF_8))
         require(root.optString("format") == FORMAT) { "Ce fichier n'est pas une archive LeafNotes." }
         val version = root.optInt("version", -1)
         require(version in 1..VERSION) { "Version d'archive non prise en charge : $version." }
